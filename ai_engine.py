@@ -24,18 +24,19 @@ class HealthAI:
     # ==========================================
     @staticmethod
     def suggest_products_gemini(user_input, all_products, api_key):
-        """الاستعانة بـ Gemini عبر الإنترنت لوصف ذكي جداً"""
+        all_prods_dict = [dict(p) for p in all_products]
+        # تنظيف المفتاح من أي مسافات أو أسطر فارغة تجنباً لخطأ 404
+        clean_api_key = api_key.strip()
+        
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={clean_api_key}"
             
-            # تجهيز المنتجات ليفهمها الذكاء الاصطناعي
-            products_text = "\n".join([f'- رقم المنتج: {p["id"]} | الاسم: {p["name"]} | الوصف: {p["description"]} | الكلمات المفتاحية: {p.get("tags", "")}' for p in all_products if p.get('quantity', 1) > 0])
+            products_text = "\n".join([f'- رقم المنتج: {p["id"]} | الاسم: {p["name"]} | الوصف: {p["description"]} | الكلمات المفتاحية: {p.get("symptoms_tags", p.get("tags", ""))} | السعر: {p["price"]}$' for p in all_prods_dict if p.get('quantity', 1) > 0])
             
-            # هندسة الأوامر (Prompt Engineering) لإجبار الذكاء على الرد كـ JSON
             prompt = f"""
             أنت طبيب وصيدلاني خبير في متجر منتجات صحية.
             حالة المريض: "{user_input}"
-            المنتجات المتوفرة:
+            المنتجات المتوفرة في المستودع:
             {products_text}
             
             بناءً على حالة المريض بدقة، اختر أفضل المنتجات المتوفرة (كحد أقصى 3 منتجات).
@@ -60,16 +61,22 @@ class HealthAI:
                 final_results = []
                 for sug in suggestions:
                     prod_id = sug.get('id')
-                    prod = next((p for p in all_products if str(p['id']) == str(prod_id)), None)
+                    prod = next((p for p in all_prods_dict if str(p['id']) == str(prod_id)), None)
                     if prod:
                         final_results.append({
                             "product": prod,
                             "explanation": "✨ (Gemini): " + sug.get('explanation', '')
                         })
                 return final_results
+                
+        except urllib.error.HTTPError as e:
+            # قراءة الخطأ الحقيقي من جوجل وطباعته لمعرفة السبب بدقة
+            error_details = e.read().decode('utf-8')
+            print(f"Gemini API Error ({e.code}): {error_details}")
+            return None
         except Exception as e:
-            print(f"Gemini Error: {e}")
-            return None # في حالة فشل الإنترنت أو المفتاح، سيعيد None ليتم تفعيل المحرك المحلي
+            print(f"Gemini General Error: {e}")
+            return None
 
     # ==========================================
     # محرك الذكاء المحلي (Offline Fallback)
@@ -119,7 +126,7 @@ class HealthAI:
     def calculate_score(expanded_query, product):
         doc_name = HealthAI.normalize_text(product.get('name', ''))
         doc_desc = HealthAI.normalize_text(product.get('description', ''))
-        doc_tags = HealthAI.normalize_text(product.get('tags', ''))
+        doc_tags = HealthAI.normalize_text(product.get('symptoms_tags', product.get('tags', '')))
         full_doc = f"{doc_name} {doc_desc} {doc_tags}"
         
         score = 0.0
@@ -135,12 +142,13 @@ class HealthAI:
 
     @staticmethod
     def suggest_products(user_input, all_products, top_n=3):
+        all_prods_dict = [dict(p) for p in all_products]
         tokens = HealthAI.correct_typos_and_get_tokens(user_input)
         if not tokens: return []
         expanded_query, intents = HealthAI.extract_intents_and_expand(tokens)
         
         scored_products = []
-        for p in all_products:
+        for p in all_prods_dict:
             score, matched_words = HealthAI.calculate_score(expanded_query, p)
             if score >= 1.0 and p.get('quantity', 1) > 0:
                 scored_products.append({"product": p, "score": score, "matches": matched_words})
