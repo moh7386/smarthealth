@@ -1,0 +1,64 @@
+name: Build Flet APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Auto-locate and Install Requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install flet
+          REQ_PATH=$(find . -name "requirements.txt" | head -n 1)
+          if [ -n "$REQ_PATH" ]; then
+            echo "Found requirements at $REQ_PATH. Installing..."
+            pip install -r "$REQ_PATH"
+          else
+            echo "No requirements.txt found, continuing with default Flet packages."
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Auto-locate main.py and Build APK
+        run: |
+          echo "Searching for main.py across the entire repository..."
+          MAIN_PATH=$(find . -name "main.py" | head -n 1)
+          
+          if [ -z "$MAIN_PATH" ]; then
+            echo "ERROR: main.py was NOT found anywhere in your repository!"
+            echo "This means the file was not uploaded to GitHub. Here is the list of files currently in your repository:"
+            ls -R
+            exit 1
+          fi
+          
+          APP_DIR=$(dirname "$MAIN_PATH")
+          echo "Success! Found main.py inside directory: $APP_DIR"
+          cd "$APP_DIR"
+          flet build apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartHealth-APK
+          # هذه النجمة المزدوجة تعني: ابحث عن أي ملف ينتهي بـ apk في أي مجلد وقم برفعه
+          path: '**/*.apk'
