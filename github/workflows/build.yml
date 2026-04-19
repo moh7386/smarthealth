@@ -1,0 +1,44 @@
+name: Build Flet APK
+
+on:
+  workflow_dispatch: # هذا الخيار يسمح لك بتشغيل البناء يدوياً متى ما شئت
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flet
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Build APK
+        # هذا الأمر سيقوم بقراءة ملف pyproject.toml الخاص بك واستخراج التطبيق
+        run: flet build apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartHealth-APK
+          path: build/apk/app-release.apk
