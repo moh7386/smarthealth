@@ -2,7 +2,7 @@ import flet as ft
 import sqlite3
 import json
 import time
-import threading
+import asyncio
 from database import Database
 from ai_engine import HealthAI
 
@@ -218,7 +218,7 @@ def main(page: ft.Page):
             ft.FloatingActionButton(icon=ft.Icons.PSYCHOLOGY, content=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD), on_click=lambda e: nav("/ai"), bgcolor=ft.Colors.BLUE_500, width=180)
         ])
 
-    # --- 4. الذكاء الاصطناعي ---
+    # --- 4. الذكاء الاصطناعي (محدث بتقنية asyncio المخصصة لحل تجميد الهاتف) ---
     def build_ai_view():
         user_input = ft.TextField(label="كيف تشعر اليوم؟", multiline=True, min_lines=3, max_lines=5, border_radius=12, border_color=ft.Colors.BLUE_400)
         results_list = ft.ListView(expand=True, spacing=15)
@@ -231,19 +231,46 @@ def main(page: ft.Page):
             ink=True
         )
 
-        def do_analysis_background(safe_val):
-            time.sleep(1)
-            
+        # الدالة التي ستعمل بقوة المعالج في الخلفية دون أن تلمس الشاشة
+        def do_heavy_lifting(safe_val):
+            # إعطاء وقت بسيط لدائرة التحميل لكي تظهر وتدور بشكل جميل للمستخدم
+            time.sleep(0.8) 
             is_gemini_enabled = db.get_setting("gemini_enabled") == "1"
             api_key = db.get_setting("gemini_api_key")
-            
-            suggestions = None
+            sugs = None
             if is_gemini_enabled and api_key:
-                suggestions = HealthAI.suggest_products_gemini(safe_val, db.get_all_products(), api_key)
+                sugs = HealthAI.suggest_products_gemini(safe_val, db.get_all_products(), api_key)
+            if not sugs:
+                sugs = HealthAI.suggest_products(safe_val, db.get_all_products())
+            return sugs
+
+        # الدالة الأساسية أصبحت Async لتسمح بالتحديث الفوري للشاشة
+        async def analyze_input(e=None):
+            safe_val = user_input.value or ""
+            if not safe_val.strip(): return show_snack("يرجى كتابة وصف لحالتك أولاً!", ft.Colors.RED_500)
             
-            if not suggestions:
-                suggestions = HealthAI.suggest_products(safe_val, db.get_all_products())
-                
+            # 1. إيقاف الأزرار وإظهار التحميل
+            user_input.disabled = True
+            analyze_btn.disabled = True
+            analyze_btn.bgcolor = ft.Colors.GREY_600
+            
+            results_list.controls.clear()
+            loading_indicator = ft.Container(
+                content=ft.Column([
+                    ft.ProgressRing(width=60, height=60, color=ft.Colors.BLUE_400, stroke_width=6),
+                    ft.Container(height=15),
+                    ft.Text("جاري تحليل حالتك الطبية بدقة...", color=ft.Colors.BLUE_200, weight=ft.FontWeight.BOLD, size=18)
+                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                alignment=ft.Alignment(0.0, 0.0),
+                padding=50
+            )
+            results_list.controls.append(loading_indicator)
+            page.update()
+            
+            # 2. إرسال العملية للخلفية والانتظار حتى تنتهي (بدون تجميد التطبيق!)
+            suggestions = await asyncio.to_thread(do_heavy_lifting, safe_val)
+            
+            # 3. الآن عدنا للمسار الرئيسي للشاشة بنجاح.. سنعرض النتائج فوراً
             results_list.controls.clear()
             
             if not suggestions: 
@@ -269,48 +296,28 @@ def main(page: ft.Page):
                         )
                     )
             
+            # 4. إعادة تفعيل الأزرار وتحديث الشاشة (هذا التحديث سيعمل 100% بدون إطفاء الشاشة)
             user_input.disabled = False
             analyze_btn.disabled = False
             analyze_btn.bgcolor = ft.Colors.BLUE_600
             page.update()
 
-        def analyze_input(e=None):
-            safe_val = user_input.value or ""
-            if not safe_val.strip(): return show_snack("يرجى كتابة وصف لحالتك أولاً!", ft.Colors.RED_500)
-            
-            user_input.disabled = True
-            analyze_btn.disabled = True
-            analyze_btn.bgcolor = ft.Colors.GREY_600
-            
-            results_list.controls.clear()
-            loading_indicator = ft.Container(
-                content=ft.Column([
-                    ft.ProgressRing(width=60, height=60, color=ft.Colors.BLUE_400, stroke_width=6),
-                    ft.Container(height=15),
-                    ft.Text("جاري تحليل حالتك الطبية بدقة...", color=ft.Colors.BLUE_200, weight=ft.FontWeight.BOLD, size=18)
-                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                alignment=ft.Alignment(0.0, 0.0),
-                padding=50
-            )
-            results_list.controls.append(loading_indicator)
-            page.update()
-            threading.Thread(target=do_analysis_background, args=(safe_val,)).start()
-
+        # ربط الزر بدالة الـ Async الجديدة
         analyze_btn.on_click = analyze_input
-            
-        def set_quick_symptom(text): 
-            user_input.value = text
-            analyze_input()
         
+        # صناعة أزرار اختصارات متوافقة مع الـ Async
         def create_chip(title, symptom_text):
+            async def chip_click(e):
+                user_input.value = symptom_text
+                await analyze_input()
+
             return ft.Container(
                 content=ft.Text(title, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
                 bgcolor=ft.Colors.BLUE_900,
-                # تمرير قيمة رقمية واحدة يحل مشكلة الـ Padding في جميع إصدارات Flet بشكل نهائي
                 padding=10,
                 border_radius=20,
                 ink=True,
-                on_click=lambda e: set_quick_symptom(symptom_text)
+                on_click=chip_click
             )
 
         quick_chips = ft.Row(
