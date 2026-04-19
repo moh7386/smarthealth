@@ -1,6 +1,8 @@
 import flet as ft
 import sqlite3
 import json
+import time
+import threading
 from database import Database
 from ai_engine import HealthAI
 
@@ -87,7 +89,7 @@ def main(page: ft.Page):
     # 4. بناء الواجهات (Views Builders)
     # ==========================================
 
-    # --- 1. شاشة الدخول (تصميم Glassmorphism) ---
+    # --- 1. شاشة الدخول ---
     def build_login_view():
         email_input = ft.TextField(label="البريد الإلكتروني", border_radius=12, prefix_icon=ft.Icons.EMAIL, border_color=ft.Colors.BLUE_300)
         pass_input = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, border_radius=12, prefix_icon=ft.Icons.LOCK, border_color=ft.Colors.BLUE_300)
@@ -111,7 +113,7 @@ def main(page: ft.Page):
                     email_input,
                     pass_input,
                     ft.Container(height=10),
-                    ft.Button(content=ft.Text("تسجيل الدخول", size=16, weight=ft.FontWeight.BOLD), on_click=do_login, height=55, width=float('inf'), style=ft.ButtonStyle(bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=12))),
+                    ft.Container(content=ft.Text("تسجيل الدخول", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=16), bgcolor=ft.Colors.BLUE_600, padding=15, border_radius=12, alignment=ft.Alignment(0.0, 0.0), on_click=do_login, ink=True),
                     ft.TextButton("ليس لديك حساب؟ سجل الآن", on_click=lambda e: nav("/register"))
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -121,32 +123,22 @@ def main(page: ft.Page):
             border_radius=20,
             bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
             blur=15,
-            border=ft.Border(
-                top=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE)),
-                left=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE))
-            ),
+            border=ft.Border(top=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE)), left=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE))),
             width=400,
         )
 
         return ft.View(
-            route="/login",
-            padding=0,
+            route="/login", padding=0,
             controls=[
                 ft.Container(
                     content=ft.Column([form_card], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO),
-                    gradient=ft.LinearGradient(
-                        begin=ft.Alignment(-1.0, -1.0),
-                        end=ft.Alignment(1.0, 1.0),
-                        colors=[ft.Colors.BLUE_900, ft.Colors.BLACK]
-                    ),
-                    expand=True,
-                    alignment=ft.Alignment(0.0, 0.0),
-                    padding=20
+                    gradient=ft.LinearGradient(begin=ft.Alignment(-1.0, -1.0), end=ft.Alignment(1.0, 1.0), colors=[ft.Colors.BLUE_900, ft.Colors.BLACK]),
+                    expand=True, alignment=ft.Alignment(0.0, 0.0), padding=20
                 )
             ]
         )
 
-    # --- 2. شاشة التسجيل العامة (تصميم Glassmorphism) ---
+    # --- 2. شاشة التسجيل العامة ---
     def build_register_view():
         name_input = ft.TextField(label="الاسم الكامل", border_radius=12, prefix_icon=ft.Icons.PERSON, border_color=ft.Colors.BLUE_300)
         email_input = ft.TextField(label="البريد الإلكتروني", border_radius=12, prefix_icon=ft.Icons.EMAIL, border_color=ft.Colors.BLUE_300)
@@ -169,37 +161,23 @@ def main(page: ft.Page):
                     ft.Container(height=10),
                     name_input, email_input, pass_input, pass_confirm,
                     ft.Container(height=10),
-                    ft.Button(content=ft.Text("إنشاء الحساب", size=16, weight=ft.FontWeight.BOLD), on_click=do_register, height=55, width=float('inf'), style=ft.ButtonStyle(bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=12))),
+                    ft.Container(content=ft.Text("إنشاء الحساب", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=16), bgcolor=ft.Colors.BLUE_600, padding=15, border_radius=12, alignment=ft.Alignment(0.0, 0.0), on_click=do_register, ink=True),
                     ft.TextButton("لديك حساب؟ تسجيل دخول", on_click=lambda e: nav("/login"))
                 ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                alignment=ft.MainAxisAlignment.CENTER
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER
             ),
-            padding=30,
-            border_radius=20,
-            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
-            blur=15,
-            border=ft.Border(
-                top=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE)),
-                left=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE))
-            ),
+            padding=30, border_radius=20, bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE), blur=15,
+            border=ft.Border(top=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE)), left=ft.BorderSide(1, ft.Colors.with_opacity(0.3, ft.Colors.WHITE))),
             width=400,
         )
 
         return ft.View(
-            route="/register",
-            padding=0,
+            route="/register", padding=0,
             controls=[
                 ft.Container(
                     content=ft.Column([form_card], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO),
-                    gradient=ft.LinearGradient(
-                        begin=ft.Alignment(-1.0, -1.0),
-                        end=ft.Alignment(1.0, 1.0),
-                        colors=[ft.Colors.BLUE_900, ft.Colors.BLACK]
-                    ),
-                    expand=True,
-                    alignment=ft.Alignment(0.0, 0.0),
-                    padding=20
+                    gradient=ft.LinearGradient(begin=ft.Alignment(-1.0, -1.0), end=ft.Alignment(1.0, 1.0), colors=[ft.Colors.BLUE_900, ft.Colors.BLACK]),
+                    expand=True, alignment=ft.Alignment(0.0, 0.0), padding=20
                 )
             ]
         )
@@ -228,7 +206,7 @@ def main(page: ft.Page):
                                 ft.Divider(height=10, color=ft.Colors.GREY_800),
                                 ft.Row([
                                     ft.Text(f"المتوفر: {prod['quantity']}", size=12, color=ft.Colors.GREY_400), 
-                                    ft.Button(content=ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD), icon=ft.Icons.ADD_SHOPPING_CART, on_click=lambda e, p=prod: add_to_cart(p), bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE)
+                                    ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=18, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=ft.Colors.BLUE_600, padding=8, border_radius=8, on_click=lambda e, p=prod: add_to_cart(p), ink=True)
                                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                             ])
                         )
@@ -240,39 +218,36 @@ def main(page: ft.Page):
             ft.FloatingActionButton(icon=ft.Icons.PSYCHOLOGY, content=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD), on_click=lambda e: nav("/ai"), bgcolor=ft.Colors.BLUE_500, width=180)
         ])
 
-    # --- 4. الذكاء الاصطناعي (مدمج مع Gemini والمحرك المحلي) ---
+    # --- 4. الذكاء الاصطناعي ---
     def build_ai_view():
         user_input = ft.TextField(label="كيف تشعر اليوم؟", multiline=True, min_lines=3, max_lines=5, border_radius=12, border_color=ft.Colors.BLUE_400)
         results_list = ft.ListView(expand=True, spacing=15)
         
-        def analyze_input(e=None):
-            safe_val = user_input.value or ""
-            if not safe_val.strip(): return show_snack("يرجى كتابة وصف لحالتك أولاً!", ft.Colors.RED_500)
+        analyze_btn = ft.Container(
+            content=ft.Row([ft.Icon(ft.Icons.SEARCH, color=ft.Colors.WHITE), ft.Text("تحليل الحالة الذكي", weight=ft.FontWeight.BOLD, size=16, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER),
+            bgcolor=ft.Colors.BLUE_600,
+            padding=15,
+            border_radius=12,
+            ink=True
+        )
+
+        def do_analysis_background(safe_val):
+            time.sleep(1)
             
-            # إظهار شاشة التحميل
-            results_list.controls.clear()
-            loading_indicator = ft.Row([ft.ProgressRing(width=20, height=20, color=ft.Colors.BLUE_400), ft.Text("الذكاء الاصطناعي يحلل حالتك...", color=ft.Colors.BLUE_200, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER)
-            results_list.controls.append(loading_indicator)
-            page.update()
-            
-            # التحقق من إعدادات الآدمن
             is_gemini_enabled = db.get_setting("gemini_enabled") == "1"
             api_key = db.get_setting("gemini_api_key")
             
             suggestions = None
-            
-            # محاولة استخدام Gemini إذا كان مفعلاً
             if is_gemini_enabled and api_key:
                 suggestions = HealthAI.suggest_products_gemini(safe_val, db.get_all_products(), api_key)
             
-            # (Fallback) استخدام المحرك المحلي إذا كان Gemini مغلقاً أو فشل الاتصال بالإنترنت
             if not suggestions:
                 suggestions = HealthAI.suggest_products(safe_val, db.get_all_products())
                 
             results_list.controls.clear()
             
             if not suggestions: 
-                results_list.controls.append(ft.Text("لم نجد منتجات تطابق وصفك.", color=ft.Colors.ORANGE_400, text_align=ft.TextAlign.CENTER))
+                results_list.controls.append(ft.Text("لم نجد منتجات تطابق وصفك حالياً.", color=ft.Colors.ORANGE_400, text_align=ft.TextAlign.CENTER))
             else:
                 for item in suggestions:
                     p = item['product']
@@ -285,20 +260,65 @@ def main(page: ft.Page):
                                     ft.Row([ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.AMBER), ft.Text(p['name'], size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_200, expand=True)]), 
                                     ft.Text(item['explanation'], color=ft.Colors.GREY_300, italic=True), 
                                     ft.Divider(height=10, color=ft.Colors.GREY_800), 
-                                    ft.Row([ft.Text(f"${p['price']}", weight=ft.FontWeight.BOLD, size=18), ft.Button(content=ft.Text("أضف للسلة"), on_click=lambda e, prod=p: add_to_cart(prod), bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                                    ft.Row([
+                                        ft.Text(f"${p['price']}", weight=ft.FontWeight.BOLD, size=18), 
+                                        ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=16, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=ft.Colors.BLUE_600, padding=10, border_radius=8, on_click=lambda e, prod=p: add_to_cart(prod), ink=True)
+                                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                                 ])
                             )
                         )
                     )
-            page.update()
             
-        def set_quick_symptom(text): user_input.value = text; analyze_input()
+            user_input.disabled = False
+            analyze_btn.disabled = False
+            analyze_btn.bgcolor = ft.Colors.BLUE_600
+            page.update()
+
+        def analyze_input(e=None):
+            safe_val = user_input.value or ""
+            if not safe_val.strip(): return show_snack("يرجى كتابة وصف لحالتك أولاً!", ft.Colors.RED_500)
+            
+            user_input.disabled = True
+            analyze_btn.disabled = True
+            analyze_btn.bgcolor = ft.Colors.GREY_600
+            
+            results_list.controls.clear()
+            loading_indicator = ft.Container(
+                content=ft.Column([
+                    ft.ProgressRing(width=60, height=60, color=ft.Colors.BLUE_400, stroke_width=6),
+                    ft.Container(height=15),
+                    ft.Text("جاري تحليل حالتك الطبية بدقة...", color=ft.Colors.BLUE_200, weight=ft.FontWeight.BOLD, size=18)
+                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                alignment=ft.Alignment(0.0, 0.0),
+                padding=50
+            )
+            results_list.controls.append(loading_indicator)
+            page.update()
+            threading.Thread(target=do_analysis_background, args=(safe_val,)).start()
+
+        analyze_btn.on_click = analyze_input
+            
+        def set_quick_symptom(text): 
+            user_input.value = text
+            analyze_input()
         
+        def create_chip(title, symptom_text):
+            return ft.Container(
+                content=ft.Text(title, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                bgcolor=ft.Colors.BLUE_900,
+                # تمرير قيمة رقمية واحدة يحل مشكلة الـ Padding في جميع إصدارات Flet بشكل نهائي
+                padding=10,
+                border_radius=20,
+                ink=True,
+                on_click=lambda e: set_quick_symptom(symptom_text)
+            )
+
         quick_chips = ft.Row(
             controls=[
-                ft.Button(content=ft.Text("أرق"), on_click=lambda e: set_quick_symptom("أعاني من أرق وصعوبة شديدة في النوم"), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=20), bgcolor=ft.Colors.BLUE_900)), 
-                ft.Button(content=ft.Text("إرهاق"), on_click=lambda e: set_quick_symptom("أحس بخمول وضعف عام وإرهاق"), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=20), bgcolor=ft.Colors.BLUE_900)), 
-                ft.Button(content=ft.Text("مفاصل"), on_click=lambda e: set_quick_symptom("ألم في المفاصل وطقطقة بالركبة"), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=20), bgcolor=ft.Colors.BLUE_900))
+                create_chip("أرق 😴", "أعاني من أرق وصعوبة شديدة في النوم"),
+                create_chip("إرهاق 😩", "أحس بخمول وضعف عام وإرهاق"),
+                create_chip("مفاصل 🦴", "ألم في المفاصل وطقطقة بالركبة"),
+                create_chip("صداع 🤕", "أعاني من صداع شديد ومستمر")
             ], 
             scroll=ft.ScrollMode.AUTO
         )
@@ -306,9 +326,13 @@ def main(page: ft.Page):
         return ft.View(route="/ai", controls=[
             ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, on_click=go_back), title=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD), actions=get_appbar_actions(), bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST), 
             ft.Container(content=ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER_400), ft.Text("توصيات عامة وليست تشخيصاً طبياً.", color=ft.Colors.AMBER_400, weight=ft.FontWeight.BOLD, expand=True)]), bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER), padding=10, border_radius=10), 
-            ft.Text("تشخيص سريع:", color=ft.Colors.GREY_400, size=14), quick_chips, ft.Container(height=5), user_input, 
-            ft.Button(content=ft.Text("تحليل الحالة الذكي", weight=ft.FontWeight.BOLD, size=16), icon=ft.Icons.SEARCH, on_click=analyze_input, height=55, width=float('inf'), bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12))), 
-            ft.Divider(color=ft.Colors.TRANSPARENT), results_list
+            ft.Text("تشخيص سريع:", color=ft.Colors.GREY_400, size=14), 
+            quick_chips, 
+            ft.Container(height=5), 
+            user_input, 
+            analyze_btn, 
+            ft.Divider(color=ft.Colors.TRANSPARENT), 
+            results_list
         ], padding=20)
 
     # --- 5. السلة ---
@@ -328,7 +352,7 @@ def main(page: ft.Page):
             ft.Divider(), 
             ft.Row([ft.Text("الإجمالي الكلي:", size=20, weight=ft.FontWeight.BOLD), ft.Text(f"${total_price}", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), 
             ft.Container(height=10), 
-            ft.Button(content=ft.Text("متابعة الدفع", size=18, weight=ft.FontWeight.BOLD), on_click=proceed_to_checkout, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, height=55, width=float('inf'), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)))
+            ft.Container(content=ft.Text("متابعة الدفع", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=18), bgcolor=ft.Colors.BLUE_600, padding=15, border_radius=12, alignment=ft.Alignment(0.0, 0.0), on_click=proceed_to_checkout, ink=True)
         ], padding=20)
 
     # --- 6. الدفع ---
@@ -357,7 +381,7 @@ def main(page: ft.Page):
             address_input, 
             payment_method, 
             ft.Container(expand=True), 
-            ft.Button(content=ft.Text("تأكيد الطلب نهائياً", size=18, weight=ft.FontWeight.BOLD), icon=ft.Icons.CHECK_CIRCLE, on_click=confirm_order, bgcolor=ft.Colors.GREEN_600, color=ft.Colors.WHITE, height=55, width=float('inf'), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)))
+            ft.Container(content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.WHITE), ft.Text("تأكيد الطلب نهائياً", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=18)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=ft.Colors.GREEN_600, padding=15, border_radius=12, on_click=confirm_order, ink=True)
         ], padding=20)
 
     # --- 7. الملف الشخصي ---
@@ -376,12 +400,9 @@ def main(page: ft.Page):
                 ft.Text(app_state['user']['name'], size=24, weight=ft.FontWeight.BOLD), 
                 ft.Text(role_text, color=ft.Colors.AMBER if app_state['user']['is_admin'] else ft.Colors.GREY_400, size=16),
                 ft.Container(height=10),
-                ft.Button(content=ft.Text("تسجيل خروج", weight=ft.FontWeight.BOLD), icon=ft.Icons.LOGOUT, on_click=logout, bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.RED), color=ft.Colors.RED_200)
+                ft.Container(content=ft.Row([ft.Icon(ft.Icons.LOGOUT, color=ft.Colors.RED_200), ft.Text("تسجيل خروج", weight=ft.FontWeight.BOLD, color=ft.Colors.RED_200)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.RED), padding=10, border_radius=8, on_click=logout, ink=True, width=150)
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=20,
-            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
-            border_radius=15,
-            width=float('inf')
+            padding=20, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border_radius=15, width=float('inf')
         )
         
         return ft.View(route="/profile", controls=[
@@ -392,11 +413,10 @@ def main(page: ft.Page):
             orders_list
         ], padding=20)
 
-    # --- 8. لوحة التحكم الشاملة (متجاوبة ومدمجة مع إعدادات الذكاء) ---
+    # --- 8. لوحة التحكم الشاملة ---
     def build_admin_view():
         stats = db.get_dashboard_stats()
         
-        # إحصائيات متجاوبة
         stats_content = ft.Column([
             ft.Row([
                 ft.Container(content=ft.Column([ft.Icon(ft.Icons.MONEY, color=ft.Colors.GREEN_400), ft.Text("المبيعات", color=ft.Colors.GREY_400), ft.Text(f"${stats['revenue']}", size=22, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, padding=15, border_radius=12, expand=True),
@@ -408,7 +428,6 @@ def main(page: ft.Page):
             ])
         ], spacing=15, scroll=ft.ScrollMode.AUTO)
         
-        # حقول المنتجات بدون عرض ثابت لتتمدد حسب الشاشة
         p_name = ft.TextField(label="الاسم", border_radius=10)
         p_desc = ft.TextField(label="الوصف", multiline=True, border_radius=10)
         p_price = ft.TextField(label="السعر ($)", border_radius=10)
@@ -428,17 +447,11 @@ def main(page: ft.Page):
 
         products_content = ft.Column([
             ft.Text("إضافة منتج جديد:", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300, size=16), 
-            p_name, 
-            ft.Row([ft.Container(content=p_price, expand=True), ft.Container(content=p_qty, expand=True)]), 
-            p_desc, 
-            p_tags, 
-            ft.Button(content=ft.Text("حفظ المنتج", weight=ft.FontWeight.BOLD), icon=ft.Icons.SAVE, on_click=save_product, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, height=50, width=float('inf'), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10))), 
-            ft.Divider(height=20), 
-            ft.Text("المنتجات الحالية:", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300, size=16), 
-            products_list
+            p_name, ft.Row([ft.Container(content=p_price, expand=True), ft.Container(content=p_qty, expand=True)]), p_desc, p_tags, 
+            ft.Container(content=ft.Row([ft.Icon(ft.Icons.SAVE, color=ft.Colors.WHITE), ft.Text("حفظ المنتج", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=ft.Colors.BLUE_600, padding=12, border_radius=10, on_click=save_product, ink=True), 
+            ft.Divider(height=20), ft.Text("المنتجات الحالية:", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300, size=16), products_list
         ], expand=True)
 
-        # إدارة المستخدمين
         u_name = ft.TextField(label="اسم المستخدم", border_radius=10)
         u_email = ft.TextField(label="البريد الإلكتروني", border_radius=10)
         u_pass = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, border_radius=10)
@@ -471,13 +484,10 @@ def main(page: ft.Page):
         users_content = ft.Column([
             ft.Text("إضافة مستخدم جديد:", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300, size=16),
             u_name, u_email, u_pass, u_role,
-            ft.Button(content=ft.Text("إضافة المستخدم", weight=ft.FontWeight.BOLD), icon=ft.Icons.PERSON_ADD, on_click=save_new_user, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, height=50, width=float('inf'), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10))),
-            ft.Divider(height=20),
-            ft.Text("إدارة المستخدمين المسجلين:", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300, size=16), 
-            users_list
+            ft.Container(content=ft.Row([ft.Icon(ft.Icons.PERSON_ADD, color=ft.Colors.WHITE), ft.Text("إضافة المستخدم", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=ft.Colors.BLUE_600, padding=12, border_radius=10, on_click=save_new_user, ink=True),
+            ft.Divider(height=20), ft.Text("إدارة المستخدمين المسجلين:", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300, size=16), users_list
         ], expand=True)
 
-        # إدارة الطلبات
         orders_list = ft.ListView(expand=True, spacing=10)
         all_orders = db.get_all_orders()
         if not all_orders:
@@ -487,7 +497,6 @@ def main(page: ft.Page):
                 orders_list.controls.append(ft.ListTile(leading=ft.Icon(ft.Icons.LOCAL_SHIPPING, color=ft.Colors.GREEN_400), title=ft.Text(f"طلب #{o['id']} - عميل #{o['user_id']}", weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"المبلغ: {o['total_price']}$ - التاريخ: {o['created_at'].split(' ')[0]}"), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, shape=ft.RoundedRectangleBorder(radius=8)))
         orders_content = ft.Column([ft.Text("سجل الطلبات الشامل", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300), ft.Divider(), orders_list], expand=True)
 
-        # إعدادات الذكاء الاصطناعي (Gemini + Offline)
         gemini_switch = ft.Switch(label="تفعيل محرك Gemini السحابي 🌐", value=(db.get_setting("gemini_enabled") == "1"), active_color=ft.Colors.GREEN_400)
         gemini_key_input = ft.TextField(label="مفتاح API (Gemini Key)", value=db.get_setting("gemini_api_key"), password=True, can_reveal_password=True, border_radius=10)
         
@@ -500,9 +509,8 @@ def main(page: ft.Page):
             ft.Row([ft.Icon(ft.Icons.CLOUD_DONE, color=ft.Colors.BLUE_400), ft.Text("إعدادات الذكاء السحابي", color=ft.Colors.BLUE_400, weight=ft.FontWeight.BOLD, size=18)]), 
             ft.Container(content=ft.Column([
                 ft.Text("ربط التطبيق مع سيرفرات جوجل (Gemini) لفهم وتبرير طبي فائق الدقة. يتطلب إنترنت.", color=ft.Colors.GREY_400, size=12),
-                gemini_switch,
-                gemini_key_input,
-                ft.Button(content=ft.Text("حفظ إعدادات الربط", weight=ft.FontWeight.BOLD), icon=ft.Icons.SAVE, on_click=save_ai_settings, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, width=float('inf'), height=45, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)))
+                gemini_switch, gemini_key_input,
+                ft.Container(content=ft.Row([ft.Icon(ft.Icons.SAVE, color=ft.Colors.WHITE), ft.Text("حفظ إعدادات الربط", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=ft.Colors.BLUE_600, padding=12, border_radius=10, on_click=save_ai_settings, ink=True)
             ]), padding=15, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border_radius=12),
             
             ft.Divider(height=20),
@@ -531,9 +539,7 @@ def main(page: ft.Page):
             create_tab_btn("الذكاء", ft.Icons.SMART_TOY, 4, ai_content),
         ])
 
-        # شريط التبويبات قابل للسحب يميناً ويساراً ليناسب الجوال
         custom_tabs_layout = ft.Column([ft.Row(controls=tab_btns, scroll=ft.ScrollMode.AUTO, spacing=15), ft.Divider(height=1, color=ft.Colors.GREY_800), content_area], expand=True)
-        
         return ft.View(route="/admin", controls=[ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, on_click=go_back), title=ft.Text("الإدارة الشاملة"), bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST), custom_tabs_layout], padding=10)
 
     # ==========================================
