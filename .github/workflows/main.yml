@@ -1,87 +1,60 @@
 name: Build Flet APK
 
-
-
 on:
-
   workflow_dispatch: # هذا الخيار يسمح لك بتشغيل البناء يدوياً متى ما شئت
 
-
-
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
-
-
     steps:
-
       - name: Checkout code
-
         uses: actions/checkout@v4
 
-
-
       - name: Setup Python
-
         uses: actions/setup-python@v5
-
         with:
-
           python-version: '3.11'
 
-
-
       - name: Install Requirements
-
         run: |
-
           python -m pip install --upgrade pip
-
-          pip install -r requirements.txt
-
+          # فحص ذكي لتثبيت المتطلبات سواء كانت في المسار الرئيسي أو داخل مجلد store
+          if [ -f "store/requirements.txt" ]; then
+            pip install -r store/requirements.txt
+          elif [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          fi
           pip install flet
 
-
-
       - name: Setup Java
-
         uses: actions/setup-java@v4
-
         with:
-
           distribution: 'zulu'
-
           java-version: '17'
 
-
-
       - name: Setup Flutter
-
         uses: subosito/flutter-action@v2
-
         with:
-
           channel: 'stable'
 
-
-
       - name: Build APK
-
-        # هذا الأمر سيقوم بقراءة ملف pyproject.toml الخاص بك واستخراج التطبيق
-
-        run: flet build apk
-
-
+        # هذا الأمر سيبحث عن مجلد store، إذا وجده سيدخل إليه ويبني التطبيق، وإلا سيبنيه في المسار الرئيسي
+        run: |
+          if [ -d "store" ]; then
+            echo "Found store directory. Entering..."
+            cd store
+            flet build apk
+          else
+            echo "Building in root directory..."
+            flet build apk
+          fi
 
       - name: Upload APK Artifact
-
         uses: actions/upload-artifact@v4
-
         with:
-
           name: SmartHealth-APK
-
-          path: build/apk/app-release.apk
+          # جلب ملف الـ APK سواء كان في المسار الرئيسي أو داخل مجلد store
+          path: |
+            build/apk/app-release.apk
+            store/build/apk/app-release.apk
