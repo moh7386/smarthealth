@@ -1,0 +1,9 @@
+[tool.flet.app]
+path = "main.py"
+assets_dir = "assets"
+
+[tool.flet.build.apk]
+org = "com.smarthealth"
+product = "SmartHealth"
+description = "متجر الصحة الذكي بالذكاء الاصطناعي"
+# الأيقونة يتم التعرف عليها تلقائياً إذا كانت داخل assets باسم icon.png
