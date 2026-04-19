@@ -10,7 +10,6 @@ def main(page: ft.Page):
     # ==========================================
     page.title = "متجر المنتجات الصحية الذكي"
     page.theme_mode = ft.ThemeMode.DARK
-    # اعتماد اللون الأزرق كلون أساسي للتطبيق
     page.theme = ft.Theme(color_scheme_seed=ft.Colors.BLUE)
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
 
@@ -72,9 +71,6 @@ def main(page: ft.Page):
         show_snack(f"🛒 تمت إضافة '{product['name']}' إلى السلة", ft.Colors.GREEN_600)
         update_cart_badges()
 
-    # ==========================================
-    # 4. بناء الواجهات (Views Builders)
-    # ==========================================
     def get_appbar_actions():
         total_items = sum(item['qty'] for item in app_state['cart'])
         cart_badge = ft.Container(
@@ -86,6 +82,10 @@ def main(page: ft.Page):
         if app_state['user'] and app_state['user'].get('is_admin'):
             actions.insert(0, ft.IconButton(ft.Icons.ADMIN_PANEL_SETTINGS, on_click=lambda e: nav("/admin"), tooltip="لوحة التحكم"))
         return actions
+
+    # ==========================================
+    # 4. بناء الواجهات (Views Builders)
+    # ==========================================
 
     # --- 1. شاشة الدخول (تصميم Glassmorphism) ---
     def build_login_view():
@@ -240,7 +240,7 @@ def main(page: ft.Page):
             ft.FloatingActionButton(icon=ft.Icons.PSYCHOLOGY, content=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD), on_click=lambda e: nav("/ai"), bgcolor=ft.Colors.BLUE_500, width=180)
         ])
 
-    # --- 4. الذكاء الاصطناعي ---
+    # --- 4. الذكاء الاصطناعي (مدمج مع Gemini والمحرك المحلي) ---
     def build_ai_view():
         user_input = ft.TextField(label="كيف تشعر اليوم؟", multiline=True, min_lines=3, max_lines=5, border_radius=12, border_color=ft.Colors.BLUE_400)
         results_list = ft.ListView(expand=True, spacing=15)
@@ -248,8 +248,29 @@ def main(page: ft.Page):
         def analyze_input(e=None):
             safe_val = user_input.value or ""
             if not safe_val.strip(): return show_snack("يرجى كتابة وصف لحالتك أولاً!", ft.Colors.RED_500)
+            
+            # إظهار شاشة التحميل
             results_list.controls.clear()
-            suggestions = HealthAI.suggest_products(safe_val, db.get_all_products())
+            loading_indicator = ft.Row([ft.ProgressRing(width=20, height=20, color=ft.Colors.BLUE_400), ft.Text("الذكاء الاصطناعي يحلل حالتك...", color=ft.Colors.BLUE_200, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER)
+            results_list.controls.append(loading_indicator)
+            page.update()
+            
+            # التحقق من إعدادات الآدمن
+            is_gemini_enabled = db.get_setting("gemini_enabled") == "1"
+            api_key = db.get_setting("gemini_api_key")
+            
+            suggestions = None
+            
+            # محاولة استخدام Gemini إذا كان مفعلاً
+            if is_gemini_enabled and api_key:
+                suggestions = HealthAI.suggest_products_gemini(safe_val, db.get_all_products(), api_key)
+            
+            # (Fallback) استخدام المحرك المحلي إذا كان Gemini مغلقاً أو فشل الاتصال بالإنترنت
+            if not suggestions:
+                suggestions = HealthAI.suggest_products(safe_val, db.get_all_products())
+                
+            results_list.controls.clear()
+            
             if not suggestions: 
                 results_list.controls.append(ft.Text("لم نجد منتجات تطابق وصفك.", color=ft.Colors.ORANGE_400, text_align=ft.TextAlign.CENTER))
             else:
@@ -257,21 +278,14 @@ def main(page: ft.Page):
                     p = item['product']
                     results_list.controls.append(
                         ft.Card(
-                            elevation=5, 
-                            shape=ft.RoundedRectangleBorder(radius=15), 
+                            elevation=5, shape=ft.RoundedRectangleBorder(radius=15), 
                             content=ft.Container(
-                                padding=15, 
-                                border=ft.Border(top=ft.BorderSide(1, ft.Colors.BLUE_700), left=ft.BorderSide(1, ft.Colors.BLUE_700)), 
-                                border_radius=15, 
-                                bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+                                padding=15, border=ft.Border(top=ft.BorderSide(1, ft.Colors.BLUE_700), left=ft.BorderSide(1, ft.Colors.BLUE_700)), border_radius=15, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
                                 content=ft.Column([
                                     ft.Row([ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.AMBER), ft.Text(p['name'], size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_200, expand=True)]), 
                                     ft.Text(item['explanation'], color=ft.Colors.GREY_300, italic=True), 
                                     ft.Divider(height=10, color=ft.Colors.GREY_800), 
-                                    ft.Row([
-                                        ft.Text(f"${p['price']}", weight=ft.FontWeight.BOLD, size=18), 
-                                        ft.Button(content=ft.Text("أضف للسلة"), on_click=lambda e, prod=p: add_to_cart(prod), bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE)
-                                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                                    ft.Row([ft.Text(f"${p['price']}", weight=ft.FontWeight.BOLD, size=18), ft.Button(content=ft.Text("أضف للسلة"), on_click=lambda e, prod=p: add_to_cart(prod), bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                                 ])
                             )
                         )
@@ -292,13 +306,9 @@ def main(page: ft.Page):
         return ft.View(route="/ai", controls=[
             ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, on_click=go_back), title=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD), actions=get_appbar_actions(), bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST), 
             ft.Container(content=ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER_400), ft.Text("توصيات عامة وليست تشخيصاً طبياً.", color=ft.Colors.AMBER_400, weight=ft.FontWeight.BOLD, expand=True)]), bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER), padding=10, border_radius=10), 
-            ft.Text("تشخيص سريع:", color=ft.Colors.GREY_400, size=14), 
-            quick_chips, 
-            ft.Container(height=5), 
-            user_input, 
+            ft.Text("تشخيص سريع:", color=ft.Colors.GREY_400, size=14), quick_chips, ft.Container(height=5), user_input, 
             ft.Button(content=ft.Text("تحليل الحالة الذكي", weight=ft.FontWeight.BOLD, size=16), icon=ft.Icons.SEARCH, on_click=analyze_input, height=55, width=float('inf'), bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12))), 
-            ft.Divider(color=ft.Colors.TRANSPARENT), 
-            results_list
+            ft.Divider(color=ft.Colors.TRANSPARENT), results_list
         ], padding=20)
 
     # --- 5. السلة ---
@@ -382,7 +392,7 @@ def main(page: ft.Page):
             orders_list
         ], padding=20)
 
-    # --- 8. لوحة التحكم الشاملة (متجاوبة مع الجوال) ---
+    # --- 8. لوحة التحكم الشاملة (متجاوبة ومدمجة مع إعدادات الذكاء) ---
     def build_admin_view():
         stats = db.get_dashboard_stats()
         
@@ -416,7 +426,6 @@ def main(page: ft.Page):
         for p in db.get_all_products(): 
             products_list.controls.append(ft.ListTile(title=ft.Text(p['name'], weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"سعر: {p['price']}$ | متوفر: {p['quantity']}"), trailing=ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED_400, on_click=lambda e, pid=p['id']: del_product(pid)), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, shape=ft.RoundedRectangleBorder(radius=8)))
 
-        # تصميم نموذج المنتجات بشكل رأسي ليناسب الجوال
         products_content = ft.Column([
             ft.Text("إضافة منتج جديد:", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300, size=16), 
             p_name, 
@@ -429,7 +438,7 @@ def main(page: ft.Page):
             products_list
         ], expand=True)
 
-        # إدارة المستخدمين بشكل متجاوب
+        # إدارة المستخدمين
         u_name = ft.TextField(label="اسم المستخدم", border_radius=10)
         u_email = ft.TextField(label="البريد الإلكتروني", border_radius=10)
         u_pass = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, border_radius=10)
@@ -478,11 +487,28 @@ def main(page: ft.Page):
                 orders_list.controls.append(ft.ListTile(leading=ft.Icon(ft.Icons.LOCAL_SHIPPING, color=ft.Colors.GREEN_400), title=ft.Text(f"طلب #{o['id']} - عميل #{o['user_id']}", weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"المبلغ: {o['total_price']}$ - التاريخ: {o['created_at'].split(' ')[0]}"), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, shape=ft.RoundedRectangleBorder(radius=8)))
         orders_content = ft.Column([ft.Text("سجل الطلبات الشامل", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_300), ft.Divider(), orders_list], expand=True)
 
-        # الذكاء الاصطناعي
+        # إعدادات الذكاء الاصطناعي (Gemini + Offline)
+        gemini_switch = ft.Switch(label="تفعيل محرك Gemini السحابي 🌐", value=(db.get_setting("gemini_enabled") == "1"), active_color=ft.Colors.GREEN_400)
+        gemini_key_input = ft.TextField(label="مفتاح API (Gemini Key)", value=db.get_setting("gemini_api_key"), password=True, can_reveal_password=True, border_radius=10)
+        
+        def save_ai_settings(e):
+            db.set_setting("gemini_enabled", "1" if gemini_switch.value else "0")
+            db.set_setting("gemini_api_key", gemini_key_input.value)
+            show_snack("تم حفظ إعدادات الذكاء الاصطناعي بنجاح!", ft.Colors.GREEN_600)
+
         ai_content = ft.Column([
-            ft.Row([ft.Icon(ft.Icons.SMART_TOY, color=ft.Colors.GREEN_400), ft.Text("محرك الذكاء الاصطناعي (مفعل 🟢)", color=ft.Colors.GREEN_400, weight=ft.FontWeight.BOLD)]), 
-            ft.TextField(multiline=True, min_lines=12, value=json.dumps(HealthAI.SYNONYMS_MAP, ensure_ascii=False, indent=2), label="خريطة المفاهيم (JSON)", border_radius=10), 
-            ft.Button(content=ft.Text("تحديث خوارزمية AI", weight=ft.FontWeight.BOLD), icon=ft.Icons.UPDATE, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, width=float('inf'), height=50, on_click=lambda e: show_snack("تم التحديث بنجاح!", ft.Colors.GREEN_600), style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)))
+            ft.Row([ft.Icon(ft.Icons.CLOUD_DONE, color=ft.Colors.BLUE_400), ft.Text("إعدادات الذكاء السحابي", color=ft.Colors.BLUE_400, weight=ft.FontWeight.BOLD, size=18)]), 
+            ft.Container(content=ft.Column([
+                ft.Text("ربط التطبيق مع سيرفرات جوجل (Gemini) لفهم وتبرير طبي فائق الدقة. يتطلب إنترنت.", color=ft.Colors.GREY_400, size=12),
+                gemini_switch,
+                gemini_key_input,
+                ft.Button(content=ft.Text("حفظ إعدادات الربط", weight=ft.FontWeight.BOLD), icon=ft.Icons.SAVE, on_click=save_ai_settings, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, width=float('inf'), height=45, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=10)))
+            ]), padding=15, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border_radius=12),
+            
+            ft.Divider(height=20),
+            ft.Row([ft.Icon(ft.Icons.OFFLINE_BOLT, color=ft.Colors.TEAL_400), ft.Text("المحرك المحلي (Offline)", color=ft.Colors.TEAL_400, weight=ft.FontWeight.BOLD, size=18)]), 
+            ft.Text("هذا المحرك يعمل تلقائياً في حال فشل الاتصال بالإنترنت أو إيقاف Gemini أعلاه.", color=ft.Colors.GREY_400, size=12),
+            ft.TextField(multiline=True, min_lines=6, max_lines=8, value=json.dumps(HealthAI.SYNONYMS_MAP, ensure_ascii=False, indent=2), label="خريطة المفاهيم (JSON)", border_radius=10, read_only=True), 
         ], expand=True, scroll=ft.ScrollMode.AUTO)
 
         content_area = ft.Container(content=stats_content, expand=True, padding=10)

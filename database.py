@@ -16,6 +16,10 @@ class Database:
         cursor.execute('''CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL, category TEXT NOT NULL, symptoms_tags TEXT NOT NULL)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, total_price REAL NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id))''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, product_id INTEGER NOT NULL, quantity INTEGER NOT NULL, FOREIGN KEY(order_id) REFERENCES orders(id), FOREIGN KEY(product_id) REFERENCES products(id))''')
+        
+        # الجدول الخاص بإعدادات الذكاء الاصطناعي (Gemini)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key_name TEXT PRIMARY KEY, key_value TEXT)''')
+        
         self.conn.commit()
 
     def seed_data(self):
@@ -87,6 +91,20 @@ class Database:
             cursor.execute('''INSERT INTO users (name, email, password, is_admin) VALUES ('Admin', 'admin@store.com', 'admin123', 1)''')
             self.conn.commit()
 
+    # ==========================================
+    # إعدادات الذكاء الاصطناعي (Gemini)
+    # ==========================================
+    def get_setting(self, key_name, default=""):
+        res = self.conn.execute("SELECT key_value FROM settings WHERE key_name = ?", (key_name,)).fetchone()
+        return res['key_value'] if res else default
+
+    def set_setting(self, key_name, key_value):
+        self.conn.execute("INSERT OR REPLACE INTO settings (key_name, key_value) VALUES (?, ?)", (key_name, key_value))
+        self.conn.commit()
+
+    # ==========================================
+    # دوال العمليات الأساسية
+    # ==========================================
     def authenticate_user(self, email, password):
         return self.conn.execute("SELECT * FROM users WHERE email=? AND password=?", (email, password)).fetchone()
 
