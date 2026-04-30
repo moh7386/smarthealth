@@ -64,14 +64,38 @@ def main(page: ft.Page):
                             badge_container.visible = total_items > 0
         page.update()
 
-    def add_to_cart(product):
-        existing_item = next((item for item in app_state['cart'] if item['product']['id'] == product['id']), None)
-        if existing_item:
-            existing_item['qty'] += 1
-        else:
-            app_state['cart'].append({'product': product, 'qty': 1})
-        show_snack(f"🛒 تمت إضافة '{product['name']}' إلى السلة", ft.Colors.GREEN_600)
+    # 🌟 المتحكم المركزي للسلة (بديل add_to_cart) لدعم التفاعل المباشر 🌟
+    def manage_cart(product, action="add"):
+        # جدار حماية: منع الإضافة للزوار وتوجيههم لتسجيل الدخول
+        if not app_state['user']:
+            show_snack("يجب تسجيل الدخول أولاً!", ft.Colors.RED_500)
+            nav("/login")
+            return
+
+        cart = app_state['cart']
+        existing = next((i for i in cart if i['product']['id'] == product['id']), None)
+
+        if action == "add":
+            if existing:
+                existing['qty'] += 1
+            else:
+                cart.append({'product': product, 'qty': 1})
+            show_snack(f"🛒 تمت الإضافة: {product['name']}", ft.Colors.GREEN_600)
+        elif action == "decrease" and existing:
+            existing['qty'] -= 1
+            if existing['qty'] <= 0:
+                cart.remove(existing)
+        elif action == "remove" and existing:
+            cart.remove(existing)
+            show_snack(f"🗑️ تم الحذف: {product['name']}", ft.Colors.ORANGE_800)
+
         update_cart_badges()
+        
+        # تحديث الواجهات النشطة فوراً لتعكس التغير في الأزرار والأسعار
+        if hasattr(page, 'refresh_home') and page.route == "/home":
+            page.refresh_home()
+        if hasattr(page, 'refresh_cart') and page.route == "/cart":
+            page.refresh_cart()
 
     def get_appbar_actions():
         total_items = sum(item['qty'] for item in app_state['cart'])
@@ -79,8 +103,17 @@ def main(page: ft.Page):
             content=ft.Text(str(total_items), size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, text_align=ft.TextAlign.CENTER),
             bgcolor=ft.Colors.RED_600, border_radius=10, padding=3, right=0, top=0, visible=total_items > 0, width=20, height=20
         )
-        cart_btn = ft.Stack([ft.IconButton(ft.Icons.SHOPPING_CART, on_click=lambda e: nav("/cart"), tooltip="السلة"), cart_badge], width=45, height=45)
-        actions = [ft.IconButton(ft.Icons.PERSON, on_click=lambda e: nav("/profile"), tooltip="الملف الشخصي"), cart_btn]
+        
+        # جدار حماية لزر السلة والملف الشخصي
+        def handle_protected_route(route):
+            if not app_state['user']:
+                show_snack("يجب تسجيل الدخول أولاً", ft.Colors.RED_500)
+                nav("/login")
+            else:
+                nav(route)
+
+        cart_btn = ft.Stack([ft.IconButton(ft.Icons.SHOPPING_CART, on_click=lambda e: handle_protected_route("/cart"), tooltip="السلة"), cart_badge], width=45, height=45)
+        actions = [ft.IconButton(ft.Icons.PERSON, on_click=lambda e: handle_protected_route("/profile"), tooltip="الملف الشخصي"), cart_btn]
         if app_state['user'] and app_state['user'].get('is_admin'):
             actions.insert(0, ft.IconButton(ft.Icons.ADMIN_PANEL_SETTINGS, on_click=lambda e: nav("/admin"), tooltip="لوحة التحكم"))
         return actions
@@ -114,7 +147,8 @@ def main(page: ft.Page):
                     pass_input,
                     ft.Container(height=10),
                     ft.Container(content=ft.Text("تسجيل الدخول", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=16), bgcolor=ft.Colors.BLUE_600, padding=15, border_radius=12, alignment=ft.Alignment(0.0, 0.0), on_click=do_login, ink=True),
-                    ft.TextButton("ليس لديك حساب؟ سجل الآن", on_click=lambda e: nav("/register"))
+                    ft.TextButton("ليس لديك حساب؟ سجل الآن", on_click=lambda e: nav("/register")),
+                    ft.TextButton("تصفح المتجر كزائر", on_click=lambda e: nav("/home"), icon=ft.Icons.STOREFRONT) # خيار الزائر
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 alignment=ft.MainAxisAlignment.CENTER
@@ -182,43 +216,64 @@ def main(page: ft.Page):
             ]
         )
 
-    # --- 3. المتجر الرئيسي ---
+    # --- 3. المتجر الرئيسي (تم إضافة التفاعل لزر السلة) ---
     def build_home_view():
         products_list = ft.ListView(expand=True, spacing=15, padding=10)
-        for p in db.get_all_products():
-            prod = dict(p)
-            if prod['quantity'] > 0:
-                products_list.controls.append(
-                    ft.Card(
-                        elevation=8, 
-                        shape=ft.RoundedRectangleBorder(radius=15), 
-                        content=ft.Container(
-                            padding=20, 
-                            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
-                            border_radius=15,
-                            content=ft.Column([
-                                ft.Row([
-                                    ft.Icon(ft.Icons.MEDICATION_LIQUID, color=ft.Colors.BLUE_400, size=30), 
-                                    ft.Text(prod['name'], size=18, weight=ft.FontWeight.BOLD, expand=True), 
-                                    ft.Text(f"${prod['price']}", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
-                                ]), 
-                                ft.Text(prod['description'], size=14, color=ft.Colors.GREY_300), 
-                                ft.Divider(height=10, color=ft.Colors.GREY_800),
-                                ft.Row([
-                                    ft.Text(f"المتوفر: {prod['quantity']}", size=12, color=ft.Colors.GREY_400), 
-                                    ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=18, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=ft.Colors.BLUE_600, padding=8, border_radius=8, on_click=lambda e, p=prod: add_to_cart(p), ink=True)
-                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-                            ])
+        
+        def update_home_ui():
+            products_list.controls.clear()
+            for p in db.get_all_products():
+                prod = dict(p)
+                if prod['quantity'] > 0:
+                    # التحقق من وجود المنتج في السلة لإظهار أزرار الكمية أو زر الإضافة
+                    in_cart = next((item for item in app_state['cart'] if item['product']['id'] == prod['id']), None)
+                    
+                    if in_cart:
+                        action_ui = ft.Row([
+                            ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED_400, on_click=lambda e, p=prod: manage_cart(p, "remove")),
+                            ft.IconButton(ft.Icons.REMOVE_CIRCLE_OUTLINE, icon_color=ft.Colors.ORANGE_400, on_click=lambda e, p=prod: manage_cart(p, "decrease")),
+                            ft.Text(str(in_cart['qty']), weight=ft.FontWeight.BOLD, size=18),
+                            ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, icon_color=ft.Colors.GREEN_400, on_click=lambda e, p=prod: manage_cart(p, "add"))
+                        ], alignment=ft.MainAxisAlignment.END, spacing=0)
+                    else:
+                        action_ui = ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=18, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=ft.Colors.BLUE_600, padding=8, border_radius=8, on_click=lambda e, p=prod: manage_cart(p, "add"), ink=True)
+
+                    products_list.controls.append(
+                        ft.Card(
+                            elevation=8, 
+                            shape=ft.RoundedRectangleBorder(radius=15), 
+                            content=ft.Container(
+                                padding=20, 
+                                bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+                                border_radius=15,
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Icon(ft.Icons.MEDICATION_LIQUID, color=ft.Colors.BLUE_400, size=30), 
+                                        ft.Text(prod['name'], size=18, weight=ft.FontWeight.BOLD, expand=True), 
+                                        ft.Text(f"${prod['price']}", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
+                                    ]), 
+                                    ft.Text(prod['description'], size=14, color=ft.Colors.GREY_300), 
+                                    ft.Divider(height=10, color=ft.Colors.GREY_800),
+                                    ft.Row([
+                                        ft.Text(f"المتوفر: {prod['quantity']}", size=12, color=ft.Colors.GREY_400), 
+                                        action_ui
+                                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                                ])
+                            )
                         )
                     )
-                )
+            page.update()
+
+        page.refresh_home = update_home_ui
+        update_home_ui()
+
         return ft.View(route="/home", controls=[
             ft.AppBar(title=ft.Text("المنتجات", weight=ft.FontWeight.BOLD), actions=get_appbar_actions(), bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST, automatically_imply_leading=False), 
             products_list, 
             ft.FloatingActionButton(icon=ft.Icons.PSYCHOLOGY, content=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD), on_click=lambda e: nav("/ai"), bgcolor=ft.Colors.BLUE_500, width=180)
         ])
 
-    # --- 4. الذكاء الاصطناعي (محدث بتقنية asyncio المخصصة لحل تجميد الهاتف) ---
+    # --- 4. الذكاء الاصطناعي (كما هو بالكود الأصلي دون تغيير) ---
     def build_ai_view():
         user_input = ft.TextField(label="كيف تشعر اليوم؟", multiline=True, min_lines=3, max_lines=5, border_radius=12, border_color=ft.Colors.BLUE_400)
         results_list = ft.ListView(expand=True, spacing=15)
@@ -231,9 +286,7 @@ def main(page: ft.Page):
             ink=True
         )
 
-        # الدالة التي ستعمل بقوة المعالج في الخلفية دون أن تلمس الشاشة
         def do_heavy_lifting(safe_val):
-            # إعطاء وقت بسيط لدائرة التحميل لكي تظهر وتدور بشكل جميل للمستخدم
             time.sleep(0.8) 
             is_gemini_enabled = db.get_setting("gemini_enabled") == "1"
             api_key = db.get_setting("gemini_api_key")
@@ -244,12 +297,10 @@ def main(page: ft.Page):
                 sugs = HealthAI.suggest_products(safe_val, db.get_all_products())
             return sugs
 
-        # الدالة الأساسية أصبحت Async لتسمح بالتحديث الفوري للشاشة
         async def analyze_input(e=None):
             safe_val = user_input.value or ""
             if not safe_val.strip(): return show_snack("يرجى كتابة وصف لحالتك أولاً!", ft.Colors.RED_500)
             
-            # 1. إيقاف الأزرار وإظهار التحميل
             user_input.disabled = True
             analyze_btn.disabled = True
             analyze_btn.bgcolor = ft.Colors.GREY_600
@@ -267,10 +318,8 @@ def main(page: ft.Page):
             results_list.controls.append(loading_indicator)
             page.update()
             
-            # 2. إرسال العملية للخلفية والانتظار حتى تنتهي (بدون تجميد التطبيق!)
             suggestions = await asyncio.to_thread(do_heavy_lifting, safe_val)
             
-            # 3. الآن عدنا للمسار الرئيسي للشاشة بنجاح.. سنعرض النتائج فوراً
             results_list.controls.clear()
             
             if not suggestions: 
@@ -289,23 +338,20 @@ def main(page: ft.Page):
                                     ft.Divider(height=10, color=ft.Colors.GREY_800), 
                                     ft.Row([
                                         ft.Text(f"${p['price']}", weight=ft.FontWeight.BOLD, size=18), 
-                                        ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=16, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=ft.Colors.BLUE_600, padding=10, border_radius=8, on_click=lambda e, prod=p: add_to_cart(prod), ink=True)
+                                        ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=16, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=ft.Colors.BLUE_600, padding=10, border_radius=8, on_click=lambda e, prod=p: manage_cart(prod, "add"), ink=True)
                                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                                 ])
                             )
                         )
                     )
             
-            # 4. إعادة تفعيل الأزرار وتحديث الشاشة (هذا التحديث سيعمل 100% بدون إطفاء الشاشة)
             user_input.disabled = False
             analyze_btn.disabled = False
             analyze_btn.bgcolor = ft.Colors.BLUE_600
             page.update()
 
-        # ربط الزر بدالة الـ Async الجديدة
         analyze_btn.on_click = analyze_input
         
-        # صناعة أزرار اختصارات متوافقة مع الـ Async
         def create_chip(title, symptom_text):
             async def chip_click(e):
                 user_input.value = symptom_text
@@ -342,12 +388,40 @@ def main(page: ft.Page):
             results_list
         ], padding=20)
 
-    # --- 5. السلة ---
+    # --- 5. السلة (تم التعديل لتكون تفاعلية) ---
     def build_cart_view():
         cart_list = ft.ListView(expand=True, spacing=10)
-        total_price = sum(item['product']['price'] * item['qty'] for item in app_state['cart'])
-        for item in app_state['cart']: 
-            cart_list.controls.append(ft.ListTile(leading=ft.Icon(ft.Icons.SHOPPING_BAG, color=ft.Colors.BLUE_400, size=30), title=ft.Text(item['product']['name'], weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"الكمية: {item['qty']} | الإجمالي: ${item['product']['price'] * item['qty']}"), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, shape=ft.RoundedRectangleBorder(radius=10)))
+        total_text = ft.Text("0", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)
+        
+        def update_cart_ui():
+            cart_list.controls.clear()
+            total_price = sum(item['product']['price'] * item['qty'] for item in app_state['cart'])
+            total_text.value = f"${total_price}"
+            
+            if not app_state['cart']:
+                cart_list.controls.append(ft.Column([ft.Icon(ft.Icons.REMOVE_SHOPPING_CART, size=80, color=ft.Colors.GREY_600), ft.Text("سلتك فارغة حالياً.", size=18)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True))
+            else:
+                for item in app_state['cart']: 
+                    prod = item['product']
+                    qty = item['qty']
+                    cart_list.controls.append(
+                        ft.ListTile(
+                            leading=ft.Icon(ft.Icons.SHOPPING_BAG, color=ft.Colors.BLUE_400, size=30), 
+                            title=ft.Text(prod['name'], weight=ft.FontWeight.BOLD), 
+                            subtitle=ft.Text(f"${prod['price']} × {qty} = ${prod['price'] * qty}"), 
+                            trailing=ft.Row([
+                                ft.IconButton(ft.Icons.REMOVE_CIRCLE_OUTLINE, icon_color=ft.Colors.ORANGE_400, on_click=lambda e, p=prod: manage_cart(p, "decrease")),
+                                ft.Text(str(qty), weight=ft.FontWeight.BOLD, size=16),
+                                ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, icon_color=ft.Colors.GREEN_400, on_click=lambda e, p=prod: manage_cart(p, "add")),
+                                ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED_500, on_click=lambda e, p=prod: manage_cart(p, "remove"))
+                            ], tight=True, spacing=0),
+                            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, shape=ft.RoundedRectangleBorder(radius=10)
+                        )
+                    )
+            page.update()
+        
+        page.refresh_cart = update_cart_ui
+        update_cart_ui()
             
         def proceed_to_checkout(e):
             if not app_state['cart']: return show_snack("سلتك فارغة!", ft.Colors.RED_500)
@@ -355,9 +429,9 @@ def main(page: ft.Page):
             
         return ft.View(route="/cart", controls=[
             ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, on_click=go_back), title=ft.Text("سلة المشتريات"), bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST), 
-            cart_list if app_state['cart'] else ft.Column([ft.Icon(ft.Icons.REMOVE_SHOPPING_CART, size=80, color=ft.Colors.GREY_600), ft.Text("سلتك فارغة حالياً.", size=18)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True), 
+            cart_list, 
             ft.Divider(), 
-            ft.Row([ft.Text("الإجمالي الكلي:", size=20, weight=ft.FontWeight.BOLD), ft.Text(f"${total_price}", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), 
+            ft.Row([ft.Text("الإجمالي الكلي:", size=20, weight=ft.FontWeight.BOLD), total_text], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), 
             ft.Container(height=10), 
             ft.Container(content=ft.Text("متابعة الدفع", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=18), bgcolor=ft.Colors.BLUE_600, padding=15, border_radius=12, alignment=ft.Alignment(0.0, 0.0), on_click=proceed_to_checkout, ink=True)
         ], padding=20)
@@ -397,7 +471,7 @@ def main(page: ft.Page):
         for o in db.conn.execute("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", (app_state['user']['id'],)).fetchall(): 
             orders_list.controls.append(ft.ListTile(leading=ft.Icon(ft.Icons.RECEIPT_LONG, color=ft.Colors.BLUE_400), title=ft.Text(f"طلب: #{o['id']}", weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"الإجمالي: ${o['total_price']}"), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, shape=ft.RoundedRectangleBorder(radius=10)))
             
-        def logout(e): app_state['user'] = None; app_state['cart'].clear(); nav("/login"); show_snack("تم تسجيل الخروج", ft.Colors.GREEN_600)
+        def logout(e): app_state['user'] = None; app_state['cart'].clear(); nav("/home"); show_snack("تم تسجيل الخروج", ft.Colors.GREEN_600)
         
         role_text = "المدير العام 🛡️" if app_state['user']['is_admin'] else "عميل 👤"
         
@@ -420,18 +494,31 @@ def main(page: ft.Page):
             orders_list
         ], padding=20)
 
-    # --- 8. لوحة التحكم الشاملة ---
+    # --- 8. لوحة التحكم الشاملة (تم تحسين الإحصائيات) ---
     def build_admin_view():
         stats = db.get_dashboard_stats()
         
+        def build_stat_card(title, val, icon, color):
+            return ft.Card(
+                elevation=6, shape=ft.RoundedRectangleBorder(radius=15),
+                content=ft.Container(
+                    padding=20, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border_radius=15,
+                    content=ft.Column([
+                        ft.Icon(icon, color=color, size=35),
+                        ft.Text(title, size=14, color=ft.Colors.GREY_400),
+                        ft.Text(str(val), size=24, weight=ft.FontWeight.BOLD)
+                    ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                )
+            )
+        
         stats_content = ft.Column([
             ft.Row([
-                ft.Container(content=ft.Column([ft.Icon(ft.Icons.MONEY, color=ft.Colors.GREEN_400), ft.Text("المبيعات", color=ft.Colors.GREY_400), ft.Text(f"${stats['revenue']}", size=22, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, padding=15, border_radius=12, expand=True),
-                ft.Container(content=ft.Column([ft.Icon(ft.Icons.SHOPPING_BAG, color=ft.Colors.BLUE_400), ft.Text("الطلبات", color=ft.Colors.GREY_400), ft.Text(str(stats['orders_count']), size=22, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, padding=15, border_radius=12, expand=True)
+                ft.Container(content=build_stat_card("الأرباح", f"${stats['revenue']}", ft.Icons.ATTACH_MONEY, ft.Colors.GREEN_400), expand=True),
+                ft.Container(content=build_stat_card("الطلبات", stats['orders_count'], ft.Icons.SHOPPING_BAG, ft.Colors.ORANGE_400), expand=True)
             ]),
             ft.Row([
-                ft.Container(content=ft.Column([ft.Icon(ft.Icons.PEOPLE, color=ft.Colors.PURPLE_400), ft.Text("المستخدمين", color=ft.Colors.GREY_400), ft.Text(str(stats['users_count']), size=22, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, padding=15, border_radius=12, expand=True),
-                ft.Container(content=ft.Column([ft.Icon(ft.Icons.INVENTORY, color=ft.Colors.ORANGE_400), ft.Text("المنتجات", color=ft.Colors.GREY_400), ft.Text(str(stats['products_count']), size=22, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, padding=15, border_radius=12, expand=True)
+                ft.Container(content=build_stat_card("المستخدمين", stats['users_count'], ft.Icons.PEOPLE, ft.Colors.BLUE_400), expand=True),
+                ft.Container(content=build_stat_card("المنتجات", stats['products_count'], ft.Icons.INVENTORY, ft.Colors.PURPLE_400), expand=True)
             ])
         ], spacing=15, scroll=ft.ScrollMode.AUTO)
         
@@ -550,11 +637,18 @@ def main(page: ft.Page):
         return ft.View(route="/admin", controls=[ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, on_click=go_back), title=ft.Text("الإدارة الشاملة"), bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST), custom_tabs_layout], padding=10)
 
     # ==========================================
-    # 6. نظام التوجيه (Routing System)
+    # 6. نظام التوجيه والمسارات (Routing System)
     # ==========================================
     def route_change(route):
         page.views.clear()
-        if page.route not in ["/login", "/register"] and not app_state['user']: return nav("/login")
+        
+        # 🌟 المسارات المتاحة للزوار
+        public_routes = ["/home", "/ai", "/login", "/register"]
+        if page.route not in public_routes and not app_state['user']:
+            show_snack("يجب تسجيل الدخول للوصول إلى هذه الصفحة", ft.Colors.RED_500)
+            nav("/login")
+            return
+            
         if page.route == "/login": page.views.append(build_login_view())
         elif page.route == "/register": page.views.append(build_register_view())
         elif page.route == "/home": page.views.append(build_home_view())
@@ -567,7 +661,9 @@ def main(page: ft.Page):
 
     page.on_route_change = route_change
     page.on_view_pop = lambda view: go_back()
-    nav("/login")
+    
+    # 🌟 التشغيل الافتراضي أصبح المتجر ليتيح التصفح كضيف
+    nav("/home")
 
 if __name__ == "__main__":
     ft.run(main)
