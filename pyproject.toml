@@ -3,7 +3,7 @@ path = "main.py"
 assets_dir = "assets"
 
 [tool.flet.build.apk]
-org = "com.smarthealth"
-product = "SmartHealth"
-description = "متجر الصحة الذكي بالذكاء الاصطناعي"
+org = "com.smartpharmacy"
+product = "SmartPharmacy"
+description = "تطبيق صيدليتي الذكية"
 # الأيقونة يتم التعرف عليها تلقائياً إذا كانت داخل assets باسم icon.png
