@@ -20,8 +20,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install flet==0.28.3
-          # البحث عن ملف requirements.txt وتثبيته إن وُجد في أي مكان
-          find . -name "requirements.txt" -exec pip install -r {} \;
+          pip install -r requirements.txt
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -37,17 +36,12 @@ jobs:
       - name: Accept Android Licenses
         run: yes | flutter doctor --android-licenses
 
-      - name: Build APK (Smart Finder)
-        # هذا السطر يعمل كرادار للبحث عن ملف main.py وبناء التطبيق من مكانه
-        run: |
-          TARGET_DIR=$(dirname $(find . -name "main.py" | head -n 1))
-          echo "Found main.py in directory: $TARGET_DIR"
-          cd "$TARGET_DIR"
-          flet build apk
+      - name: Build APK
+        # بما أن ملف main.py موجود في المسار الرئيسي، سيتم بناء التطبيق مباشرة
+        run: flet build apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SmartPharmacy-APK
-          # هذا المسار سيلتقط ملف الـ APK مهما كان المجلد الذي تم البناء فيه
-          path: "**/build/apk/**/*.apk"
+          path: "build/apk/app-release.apk"
