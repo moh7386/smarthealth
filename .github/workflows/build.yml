@@ -1,7 +1,7 @@
 name: Build Flet APK
 
 on:
-  workflow_dispatch: # لتشغيل البناء يدوياً من واجهة GitHub
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -20,7 +20,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install flet==0.28.3
-          pip install -r requirements.txt
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -37,8 +37,8 @@ jobs:
         run: yes | flutter doctor --android-licenses
 
       - name: Build APK
-        # بما أن ملف main.py موجود في المسار الرئيسي، سيتم بناء التطبيق مباشرة
-        run: flet build apk
+        # أضفنا مسافة ثم نقطة (.) لإجبار المكتبة على البناء في هذا المسار
+        run: flet build apk .
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
