@@ -19,7 +19,10 @@ jobs:
       - name: Install Requirements
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install flet==0.28.3
+          # إذا كان لديك ملف requirements.txt سيتم تثبيته أيضاً
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
+          if [ -f "smarthealth-main/requirements.txt" ]; then pip install -r smarthealth-main/requirements.txt; fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -32,12 +35,21 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Accept Android Licenses
+        # هذا السطر يحل مشكلة التراخيص نهائياً
+        run: yes | flutter doctor --android-licenses
+
       - name: Build APK
-        # بناء التطبيق بناءً على إعدادات pyproject.toml
-        run: flet build apk
+        # هذا السطر يحل مشكلة عدم العثور على main.py
+        run: |
+          if [ -d "smarthealth-main" ]; then
+            cd smarthealth-main
+          fi
+          flet build apk .
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SmartPharmacy-APK
-          path: build/apk/app-release.apk
+          # مسار ذكي لالتقاط ملف الـ APK أياً كان مكانه
+          path: "**/build/apk/app-release.apk"
