@@ -20,9 +20,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install flet==0.28.3
-          # إذا كان لديك ملف requirements.txt سيتم تثبيته أيضاً
-          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
-          if [ -f "smarthealth-main/requirements.txt" ]; then pip install -r smarthealth-main/requirements.txt; fi
+          # البحث عن ملف requirements.txt وتثبيته إن وُجد في أي مكان
+          find . -name "requirements.txt" -exec pip install -r {} \;
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -36,20 +35,19 @@ jobs:
           channel: 'stable'
 
       - name: Accept Android Licenses
-        # هذا السطر يحل مشكلة التراخيص نهائياً
         run: yes | flutter doctor --android-licenses
 
-      - name: Build APK
-        # هذا السطر يحل مشكلة عدم العثور على main.py
+      - name: Build APK (Smart Finder)
+        # هذا السطر يعمل كرادار للبحث عن ملف main.py وبناء التطبيق من مكانه
         run: |
-          if [ -d "smarthealth-main" ]; then
-            cd smarthealth-main
-          fi
-          flet build apk .
+          TARGET_DIR=$(dirname $(find . -name "main.py" | head -n 1))
+          echo "Found main.py in directory: $TARGET_DIR"
+          cd "$TARGET_DIR"
+          flet build apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SmartPharmacy-APK
-          # مسار ذكي لالتقاط ملف الـ APK أياً كان مكانه
-          path: "**/build/apk/app-release.apk"
+          # هذا المسار سيلتقط ملف الـ APK مهما كان المجلد الذي تم البناء فيه
+          path: "**/build/apk/**/*.apk"
