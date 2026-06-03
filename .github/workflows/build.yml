@@ -1,49 +1,43 @@
-name: Build Android APK (Flet 0.28.3)
+name: Build Flet APK
 
-# متى يتم تشغيل هذا الأكشن؟
 on:
-  push:
-    branches: [ "main", "master" ] # عند رفع أي كود جديد
-  workflow_dispatch: # يضيف زر لتشغيل العملية يدوياً من واجهة جيت هب
+  workflow_dispatch: # لتشغيل البناء يدوياً من واجهة GitHub
 
 jobs:
   build:
-    name: Build APK
-    runs-on: ubuntu-latest # استخدام سيرفر لينكس سحابي من جيت هب
+    runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 سحب الكود من المستودع
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: ☕ تجهيز بيئة Java (مطلوبة للأندرويد)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: 🦋 تجهيز بيئة Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: 🐍 تجهيز لغة Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Build APK
+        # بناء التطبيق بناءً على إعدادات pyproject.toml
+        run: flet build apk
 
-      - name: 📦 تثبيت المكتبات (Flet 0.28.3)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: 🚀 بناء تطبيق الأندرويد (APK)
-        run: |
-          # أمر البناء الخاص بإصدار 0.28.3
-          flet build apk
-
-      - name: 📤 رفع ملف الـ APK النهائي
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SmartPharmacy-App-APK
-          path: build/apk/**/*.apk
-          retention-days: 7 # سيتم حفظ الملف للتحميل لمدة 7 أيام
+          name: SmartPharmacy-APK
+          path: build/apk/app-release.apk
