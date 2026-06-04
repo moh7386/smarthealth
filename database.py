@@ -13,7 +13,7 @@ class Database:
     def create_tables(self):
         cursor = self.conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, is_admin INTEGER DEFAULT 0)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL, category TEXT NOT NULL, symptoms_tags TEXT NOT NULL)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER NOT NULL, category TEXT NOT NULL, symptoms_tags TEXT NOT NULL, image TEXT NOT NULL)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, total_price REAL NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id))''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, product_id INTEGER NOT NULL, quantity INTEGER NOT NULL, FOREIGN KEY(order_id) REFERENCES orders(id), FOREIGN KEY(product_id) REFERENCES products(id))''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key_name TEXT PRIMARY KEY, key_value TEXT)''')
@@ -23,7 +23,6 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM products")
         if cursor.fetchone()[0] == 0:
-            # قاعدة بيانات ضخمة تحتوي على 100 صنف طبي وصحي مدروس
             products = [
                 # --- 1. الفيتامينات والمعادن (1 - 25) ---
                 ("مغنيسيوم جلايسينات", "يساعد على الاسترخاء، تحسين جودة النوم، وتخفيف الشد العضلي.", 15.0, 50, "معادن", json.dumps(["نوم", "ارق", "تعب", "عضلات", "ارهاق", "شد", "توتر"])),
@@ -134,7 +133,10 @@ class Database:
                 ("عصير الصبار النقي", "ينظف الجهاز الهضمي من الفضلات المتحجرة ويسهل عملية الإخراج.", 19.0, 35, "رياضة", json.dumps(["ديتوكس", "قولون", "اخراج", "امساك", "سموم"]))
             ]
             
-            cursor.executemany('''INSERT INTO products (name, description, price, quantity, category, symptoms_tags) VALUES (?, ?, ?, ?, ?, ?)''', products)
+            # حيلة برمجية ذكية: نضيف الصورة الافتراضية "default_med.png" لكل المنتجات بلمسة واحدة!
+            products_with_images = [(*p, "default_med.png") for p in products]
+            cursor.executemany('''INSERT INTO products (name, description, price, quantity, category, symptoms_tags, image) VALUES (?, ?, ?, ?, ?, ?, ?)''', products_with_images)
+            
             cursor.execute('''INSERT INTO users (name, email, password, is_admin) VALUES ('Admin', 'admin@store.com', 'admin123', 1)''')
             self.conn.commit()
 
@@ -150,7 +152,7 @@ class Database:
         return self.conn.execute("SELECT * FROM users WHERE email=? AND password=?", (email, password)).fetchone()
 
     def get_all_products(self):
-        return self.conn.execute("SELECT * FROM products").fetchall()
+        return self.conn.execute("SELECT * FROM products ORDER BY id DESC").fetchall()
 
     def update_inventory(self, product_id, qty):
         self.conn.execute("UPDATE products SET quantity = quantity - ? WHERE id = ?", (qty, product_id))
@@ -176,8 +178,15 @@ class Database:
         products_count = self.conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
         return {"orders_count": orders_count, "revenue": revenue, "users_count": users_count, "products_count": products_count}
 
-    def add_product(self, name, desc, price, qty, tags):
-        self.conn.execute('''INSERT INTO products (name, description, price, quantity, category, symptoms_tags) VALUES (?, ?, ?, ?, 'عام', ?)''', (name, desc, price, qty, json.dumps(tags.split(","))))
+    def add_product(self, name, desc, price, qty, tags, image="default_med.png"):
+        image = image if image else "default_med.png"
+        self.conn.execute('''INSERT INTO products (name, description, price, quantity, category, symptoms_tags, image) VALUES (?, ?, ?, ?, 'عام', ?, ?)''', (name, desc, price, qty, json.dumps(tags.split(",")), image))
+        self.conn.commit()
+
+    # الدالة الجديدة لتحديث المنتجات الموجودة مسبقاً
+    def update_product(self, product_id, name, desc, price, qty, tags, image):
+        image = image if image else "default_med.png"
+        self.conn.execute('''UPDATE products SET name=?, description=?, price=?, quantity=?, symptoms_tags=?, image=? WHERE id=?''', (name, desc, price, qty, json.dumps(tags.split(",")), image, product_id))
         self.conn.commit()
 
     def delete_product(self, product_id):

@@ -3,12 +3,14 @@ import sqlite3
 import json
 import time
 import asyncio
+import shutil
+import os
 from database import Database
 from ai_engine import HealthAI
 
 def main(page: ft.Page):
     # ==========================================
-    # 1. إعدادات النافذة وباليتة الألوان (الزيتي والعشبي)
+    # 1. إعدادات النافذة وباليتة الألوان 
     # ==========================================
     page.title = "صيدليتي الذكية"
     page.theme_mode = ft.ThemeMode.LIGHT 
@@ -27,9 +29,6 @@ def main(page: ft.Page):
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.bgcolor = BG_APP
 
-    # ==========================================
-    # 2. حالة التطبيق وقاعدة البيانات
-    # ==========================================
     db = Database()
     app_state = {
         "user": None,
@@ -37,10 +36,15 @@ def main(page: ft.Page):
     }
 
     # ==========================================
-    # 3. دوال مساعدة والإشعارات (تم إصلاح نظام التوجيه بالكامل)
+    # 2. مستعرض الملفات (File Picker)
+    # ==========================================
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
+
+    # ==========================================
+    # 3. دوال مساعدة والإشعارات
     # ==========================================
     def nav(route):
-        # استخدمنا page.go المتوافقة مع إصدارك
         page.go(route)
 
     def go_back(e=None):
@@ -121,17 +125,25 @@ def main(page: ft.Page):
             else:
                 nav(route)
 
-        cart_btn = ft.Stack([ft.IconButton(ft.Icons.SHOPPING_CART, icon_color=ft.Colors.WHITE, on_click=lambda e: handle_protected_route("/cart")), cart_badge], width=45, height=45)
-        actions = [ft.IconButton(ft.Icons.PERSON, icon_color=ft.Colors.WHITE, on_click=lambda e: handle_protected_route("/profile")), cart_btn]
+        cart_btn = ft.Stack([
+            ft.IconButton(ft.Icons.SHOPPING_CART, icon_color=ft.Colors.WHITE, on_click=lambda e: handle_protected_route("/cart")), 
+            cart_badge
+        ], width=45, height=45)
+        
+        actions = [
+            ft.IconButton(ft.Icons.PERSON, icon_color=ft.Colors.WHITE, on_click=lambda e: handle_protected_route("/profile")), 
+            cart_btn
+        ]
+        
         if app_state['user'] and app_state['user'].get('is_admin'):
             actions.insert(0, ft.IconButton(ft.Icons.ADMIN_PANEL_SETTINGS, icon_color=PRIMARY_LIGHT, on_click=lambda e: nav("/admin")))
+            
         return actions
 
     # ==========================================
-    # 4. بناء الواجهات (Views Builders)
+    # 4. بناء الواجهات
     # ==========================================
 
-    # --- 0. شاشة الترحيب (Splash Screen) ---
     def build_splash_view():
         return ft.View(
             route="/splash",
@@ -157,20 +169,22 @@ def main(page: ft.Page):
             ]
         )
 
-    # --- 1. شاشة الدخول ---
     def build_login_view():
         email_input = ft.TextField(label="البريد الإلكتروني", border_radius=12, prefix_icon=ft.Icons.EMAIL, border_color=PRIMARY_LIGHT, color=TEXT_MAIN, bgcolor=BG_CARD)
         pass_input = ft.TextField(label="كلمة المرور", password=True, can_reveal_password=True, border_radius=12, prefix_icon=ft.Icons.LOCK, border_color=PRIMARY_LIGHT, color=TEXT_MAIN, bgcolor=BG_CARD)
         
         def do_login(e):
-            if not email_input.value or not pass_input.value: return show_snack("أدخل البريد وكلمة المرور!", DANGER)
+            if not email_input.value or not pass_input.value: 
+                return show_snack("أدخل البريد وكلمة المرور!", DANGER)
+            
             user = db.authenticate_user(email_input.value, pass_input.value)
             if user:
                 app_state['user'] = dict(user)
                 role = "المدير" if user['is_admin'] else "العميل"
                 show_snack(f"أهلاً بك يا {role} {user['name']} 👋", PRIMARY_DARK)
                 nav("/home")
-            else: show_snack("البيانات غير صحيحة!", DANGER)
+            else: 
+                show_snack("البيانات غير صحيحة!", DANGER)
 
         form_card = ft.Container(
             content=ft.Column(
@@ -195,17 +209,8 @@ def main(page: ft.Page):
             width=400
         )
 
-        return ft.View(
-            route="/login", padding=0, bgcolor=BG_APP,
-            controls=[
-                ft.Container(
-                    content=ft.Column([form_card], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO),
-                    expand=True, alignment=ft.Alignment(0.0, 0.0), padding=20
-                )
-            ]
-        )
+        return ft.View(route="/login", padding=0, bgcolor=BG_APP, controls=[ft.Container(content=ft.Column([form_card], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO), expand=True, alignment=ft.Alignment(0.0, 0.0), padding=20)])
 
-    # --- 2. شاشة التسجيل العامة ---
     def build_register_view():
         name_input = ft.TextField(label="الاسم الكامل", border_radius=12, prefix_icon=ft.Icons.PERSON, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
         email_input = ft.TextField(label="البريد الإلكتروني", border_radius=12, prefix_icon=ft.Icons.EMAIL, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
@@ -213,12 +218,17 @@ def main(page: ft.Page):
         pass_confirm = ft.TextField(label="تأكيد كلمة المرور", password=True, can_reveal_password=True, border_radius=12, prefix_icon=ft.Icons.LOCK_OUTLINE, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
         
         def do_register(e):
-            if not name_input.value or not email_input.value or not pass_input.value or not pass_confirm.value: return show_snack("أكمل الحقول!", DANGER)
-            if pass_input.value != pass_confirm.value: return show_snack("كلمات المرور غير متطابقة!", DANGER)
+            if not name_input.value or not email_input.value or not pass_input.value or not pass_confirm.value: 
+                return show_snack("أكمل الحقول!", DANGER)
+            if pass_input.value != pass_confirm.value: 
+                return show_snack("كلمات المرور غير متطابقة!", DANGER)
             try:
-                db.conn.execute("INSERT INTO users (name, email, password, is_admin) VALUES (?, ?, ?, 0)", (name_input.value, email_input.value, pass_input.value)); db.conn.commit()
-                show_snack("تم إنشاء حساب العميل بنجاح!", PRIMARY_DARK); nav("/login")
-            except sqlite3.IntegrityError: show_snack("هذا البريد مسجل مسبقاً!", DANGER)
+                db.conn.execute("INSERT INTO users (name, email, password, is_admin) VALUES (?, ?, ?, 0)", (name_input.value, email_input.value, pass_input.value))
+                db.conn.commit()
+                show_snack("تم إنشاء حساب العميل بنجاح!", PRIMARY_DARK)
+                nav("/login")
+            except sqlite3.IntegrityError: 
+                show_snack("هذا البريد مسجل مسبقاً!", DANGER)
 
         form_card = ft.Container(
             content=ft.Column(
@@ -233,22 +243,11 @@ def main(page: ft.Page):
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER
             ),
-            padding=30, border_radius=25, bgcolor=BG_CARD, 
-            border=ft.border.all(1, PRIMARY_LIGHT),
-            width=400
+            padding=30, border_radius=25, bgcolor=BG_CARD, border=ft.border.all(1, PRIMARY_LIGHT), width=400
         )
 
-        return ft.View(
-            route="/register", padding=0, bgcolor=BG_APP,
-            controls=[
-                ft.Container(
-                    content=ft.Column([form_card], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO),
-                    expand=True, alignment=ft.Alignment(0.0, 0.0), padding=20
-                )
-            ]
-        )
+        return ft.View(route="/register", padding=0, bgcolor=BG_APP, controls=[ft.Container(content=ft.Column([form_card], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO), expand=True, alignment=ft.Alignment(0.0, 0.0), padding=20)])
 
-    # --- 3. المتجر الرئيسي ---
     def build_home_view():
         products_list = ft.ListView(expand=True, spacing=15, padding=10)
         
@@ -267,26 +266,25 @@ def main(page: ft.Page):
                             ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, icon_color=PRIMARY_DARK, on_click=lambda e, p=prod: manage_cart(p, "add"))
                         ], alignment=ft.MainAxisAlignment.END, spacing=0)
                     else:
-                        action_ui = ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=16, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=13)]), bgcolor=PRIMARY_DARK, padding=8, border_radius=20, on_click=lambda e, p=prod: manage_cart(p, "add"), ink=True)
+                        action_ui = ft.Container(
+                            content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=16, color=ft.Colors.WHITE), ft.Text("أضف للسلة", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=13)]), 
+                            bgcolor=PRIMARY_DARK, padding=8, border_radius=20, on_click=lambda e, p=prod: manage_cart(p, "add"), ink=True
+                        )
 
+                    product_image_name = prod.get('image', 'default_med.png')
                     products_list.controls.append(
                         ft.Container(
-                            padding=20, 
-                            bgcolor=BG_CARD,
-                            border_radius=15,
-                            border=ft.border.all(1, PRIMARY_LIGHT),
+                            padding=20, bgcolor=BG_CARD, border_radius=15, border=ft.border.all(1, PRIMARY_LIGHT),
                             content=ft.Column([
                                 ft.Row([
-                                    ft.Icon(ft.Icons.MEDICATION_LIQUID, color=PRIMARY, size=30), 
+                                    ft.Image(src=product_image_name, width=60, height=60, fit=ft.ImageFit.CONTAIN, border_radius=10),
+                                    ft.Container(width=10),
                                     ft.Text(prod['name'], size=18, weight=ft.FontWeight.BOLD, color=TEXT_MAIN, expand=True), 
                                     ft.Text(f"${prod['price']}", size=20, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK)
                                 ]), 
                                 ft.Text(prod['description'], size=14, color=TEXT_MUTED), 
                                 ft.Divider(height=10, color=PRIMARY_LIGHT),
-                                ft.Row([
-                                    ft.Text(f"المتوفر: {prod['quantity']}", size=12, color=TEXT_MUTED), 
-                                    action_ui
-                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                                ft.Row([ft.Text(f"المتوفر: {prod['quantity']}", size=12, color=TEXT_MUTED), action_ui], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                             ])
                         )
                     )
@@ -295,31 +293,14 @@ def main(page: ft.Page):
         page.refresh_home = update_home_ui
         update_home_ui()
 
-        fab = ft.FloatingActionButton(
-            content=ft.Row([ft.Icon(ft.Icons.PSYCHOLOGY, color=ft.Colors.WHITE), ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]),
-            on_click=lambda e: nav("/ai"),
-            bgcolor=PRIMARY_DARK,
-            width=180
-        )
+        fab = ft.FloatingActionButton(content=ft.Row([ft.Icon(ft.Icons.PSYCHOLOGY, color=ft.Colors.WHITE), ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), on_click=lambda e: nav("/ai"), bgcolor=PRIMARY_DARK, width=180)
+        return ft.View(route="/home", bgcolor=BG_APP, controls=[ft.AppBar(title=ft.Text("المنتجات", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE), actions=get_appbar_actions(), bgcolor=PRIMARY, automatically_imply_leading=False), products_list, fab])
 
-        return ft.View(route="/home", bgcolor=BG_APP, controls=[
-            ft.AppBar(title=ft.Text("المنتجات", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE), actions=get_appbar_actions(), bgcolor=PRIMARY, automatically_imply_leading=False), 
-            products_list, 
-            fab
-        ])
-
-    # --- 4. الذكاء الاصطناعي ---
     def build_ai_view():
         user_input = ft.TextField(label="كيف تشعر اليوم؟", multiline=True, min_lines=3, max_lines=5, border_radius=12, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
         results_list = ft.ListView(expand=True, spacing=15)
         
-        analyze_btn = ft.Container(
-            content=ft.Row([ft.Icon(ft.Icons.SEARCH, color=ft.Colors.WHITE), ft.Text("تحليل الحالة الذكي", weight=ft.FontWeight.BOLD, size=16, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER),
-            bgcolor=PRIMARY_DARK,
-            padding=15,
-            border_radius=30,
-            ink=True
-        )
+        analyze_btn = ft.Container(content=ft.Row([ft.Icon(ft.Icons.SEARCH, color=ft.Colors.WHITE), ft.Text("تحليل الحالة الذكي", weight=ft.FontWeight.BOLD, size=16, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=PRIMARY_DARK, padding=15, border_radius=30, ink=True)
 
         def do_heavy_lifting(safe_val):
             time.sleep(0.8) 
@@ -336,25 +317,12 @@ def main(page: ft.Page):
             safe_val = user_input.value or ""
             if not safe_val.strip(): return show_snack("يرجى كتابة وصف لحالتك أولاً!", DANGER)
             
-            user_input.disabled = True
-            analyze_btn.disabled = True
-            analyze_btn.bgcolor = TEXT_MUTED
-            
+            user_input.disabled = True; analyze_btn.disabled = True; analyze_btn.bgcolor = TEXT_MUTED
             results_list.controls.clear()
-            loading_indicator = ft.Container(
-                content=ft.Column([
-                    ft.ProgressRing(width=60, height=60, color=PRIMARY_DARK, stroke_width=6),
-                    ft.Container(height=15),
-                    ft.Text("جاري تحليل حالتك الطبية بدقة...", color=PRIMARY_DARK, weight=ft.FontWeight.BOLD, size=18)
-                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                alignment=ft.Alignment(0.0, 0.0),
-                padding=50
-            )
-            results_list.controls.append(loading_indicator)
+            results_list.controls.append(ft.Container(content=ft.Column([ft.ProgressRing(width=60, height=60, color=PRIMARY_DARK, stroke_width=6), ft.Container(height=15), ft.Text("جاري تحليل حالتك الطبية بدقة...", color=PRIMARY_DARK, weight=ft.FontWeight.BOLD, size=18)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), alignment=ft.Alignment(0.0, 0.0), padding=50))
             page.update()
             
             suggestions = await asyncio.to_thread(do_heavy_lifting, safe_val)
-            
             results_list.controls.clear()
             
             if not suggestions: 
@@ -362,24 +330,16 @@ def main(page: ft.Page):
             else:
                 for item in suggestions:
                     p = item['product']
+                    product_image_name = p.get('image', 'default_med.png')
                     results_list.controls.append(
-                        ft.Container(
-                            padding=15, border=ft.border.all(1, PRIMARY_LIGHT), border_radius=15, bgcolor=BG_CARD,
-                            content=ft.Column([
-                                ft.Row([ft.Icon(ft.Icons.AUTO_AWESOME, color=PRIMARY), ft.Text(p['name'], size=18, weight=ft.FontWeight.BOLD, color=TEXT_MAIN, expand=True)]), 
-                                ft.Text(item['explanation'], color=TEXT_MUTED, italic=True), 
-                                ft.Divider(height=10, color=PRIMARY_LIGHT), 
-                                ft.Row([
-                                    ft.Text(f"${p['price']}", weight=ft.FontWeight.BOLD, size=18, color=PRIMARY_DARK), 
-                                    ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=14, color=ft.Colors.WHITE), ft.Text("أضف", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=PRIMARY_DARK, padding=8, border_radius=20, on_click=lambda e, prod=p: manage_cart(prod, "add"), ink=True)
-                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-                            ])
-                        )
+                        ft.Container(padding=15, border=ft.border.all(1, PRIMARY_LIGHT), border_radius=15, bgcolor=BG_CARD, content=ft.Column([
+                            ft.Row([ft.Image(src=product_image_name, width=40, height=40, fit=ft.ImageFit.CONTAIN), ft.Container(width=10), ft.Text(p['name'], size=18, weight=ft.FontWeight.BOLD, color=TEXT_MAIN, expand=True)]), 
+                            ft.Text(item['explanation'], color=TEXT_MUTED, italic=True), ft.Divider(height=10, color=PRIMARY_LIGHT), 
+                            ft.Row([ft.Text(f"${p['price']}", weight=ft.FontWeight.BOLD, size=18, color=PRIMARY_DARK), ft.Container(content=ft.Row([ft.Icon(ft.Icons.ADD_SHOPPING_CART, size=14, color=ft.Colors.WHITE), ft.Text("أضف", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)]), bgcolor=PRIMARY_DARK, padding=8, border_radius=20, on_click=lambda e, prod=p: manage_cart(prod, "add"), ink=True)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                        ]))
                     )
             
-            user_input.disabled = False
-            analyze_btn.disabled = False
-            analyze_btn.bgcolor = PRIMARY_DARK
+            user_input.disabled = False; analyze_btn.disabled = False; analyze_btn.bgcolor = PRIMARY_DARK
             page.update()
 
         analyze_btn.on_click = analyze_input
@@ -388,39 +348,11 @@ def main(page: ft.Page):
             async def chip_click(e):
                 user_input.value = symptom_text
                 await analyze_input()
+            return ft.Container(content=ft.Text(title, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK), bgcolor=PRIMARY_LIGHT, padding=10, border_radius=20, ink=True, on_click=chip_click)
 
-            return ft.Container(
-                content=ft.Text(title, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK),
-                bgcolor=PRIMARY_LIGHT,
-                padding=10,
-                border_radius=20,
-                ink=True,
-                on_click=chip_click
-            )
+        quick_chips = ft.Row(controls=[create_chip("أرق 😴", "أعاني من أرق وصعوبة شديدة في النوم"), create_chip("إرهاق 😩", "أحس بخمول وضعف عام وإرهاق"), create_chip("مفاصل 🦴", "ألم في المفاصل وطقطقة بالركبة"), create_chip("صداع 🤕", "أعاني من صداع شديد ومستمر")], scroll=ft.ScrollMode.AUTO)
+        return ft.View(route="/ai", bgcolor=BG_APP, controls=[ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE), actions=get_appbar_actions(), bgcolor=PRIMARY), ft.Container(content=ft.Row([ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, color=PRIMARY_DARK), ft.Text("توصيات عامة وليست تشخيصاً طبياً دقيقاً.", color=PRIMARY_DARK, weight=ft.FontWeight.BOLD, expand=True)]), bgcolor=PRIMARY_LIGHT, padding=10, border_radius=10), ft.Text("تشخيص سريع:", color=TEXT_MUTED, size=14), quick_chips, ft.Container(height=5), user_input, analyze_btn, ft.Divider(color=ft.Colors.TRANSPARENT), results_list], padding=20)
 
-        quick_chips = ft.Row(
-            controls=[
-                create_chip("أرق 😴", "أعاني من أرق وصعوبة شديدة في النوم"),
-                create_chip("إرهاق 😩", "أحس بخمول وضعف عام وإرهاق"),
-                create_chip("مفاصل 🦴", "ألم في المفاصل وطقطقة بالركبة"),
-                create_chip("صداع 🤕", "أعاني من صداع شديد ومستمر")
-            ], 
-            scroll=ft.ScrollMode.AUTO
-        )
-        
-        return ft.View(route="/ai", bgcolor=BG_APP, controls=[
-            ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("المساعد الذكي", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE), actions=get_appbar_actions(), bgcolor=PRIMARY), 
-            ft.Container(content=ft.Row([ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, color=PRIMARY_DARK), ft.Text("توصيات عامة وليست تشخيصاً طبياً دقيقاً.", color=PRIMARY_DARK, weight=ft.FontWeight.BOLD, expand=True)]), bgcolor=PRIMARY_LIGHT, padding=10, border_radius=10), 
-            ft.Text("تشخيص سريع:", color=TEXT_MUTED, size=14), 
-            quick_chips, 
-            ft.Container(height=5), 
-            user_input, 
-            analyze_btn, 
-            ft.Divider(color=ft.Colors.TRANSPARENT), 
-            results_list
-        ], padding=20)
-
-    # --- 5. السلة ---
     def build_cart_view():
         cart_list = ft.ListView(expand=True, spacing=10)
         total_text = ft.Text("0", size=24, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK)
@@ -436,19 +368,15 @@ def main(page: ft.Page):
                 for item in app_state['cart']: 
                     prod = item['product']
                     qty = item['qty']
+                    product_image_name = prod.get('image', 'default_med.png')
                     cart_list.controls.append(
                         ft.Container(
                             bgcolor=BG_CARD, border_radius=15, border=ft.border.all(1, PRIMARY_LIGHT),
                             content=ft.ListTile(
-                                leading=ft.Icon(ft.Icons.SHOPPING_BAG, color=PRIMARY, size=30), 
+                                leading=ft.Image(src=product_image_name, width=40, height=40, fit=ft.ImageFit.CONTAIN), 
                                 title=ft.Text(prod['name'], weight=ft.FontWeight.BOLD, color=TEXT_MAIN), 
                                 subtitle=ft.Text(f"${prod['price']} × {qty} = ${prod['price'] * qty}", color=TEXT_MUTED), 
-                                trailing=ft.Row([
-                                    ft.IconButton(ft.Icons.REMOVE_CIRCLE_OUTLINE, icon_color=TEXT_MUTED, on_click=lambda e, p=prod: manage_cart(p, "decrease")),
-                                    ft.Text(str(qty), weight=ft.FontWeight.BOLD, size=16, color=PRIMARY_DARK),
-                                    ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, icon_color=PRIMARY_DARK, on_click=lambda e, p=prod: manage_cart(p, "add")),
-                                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=DANGER, on_click=lambda e, p=prod: manage_cart(p, "remove"))
-                                ], tight=True, spacing=0)
+                                trailing=ft.Row([ft.IconButton(ft.Icons.REMOVE_CIRCLE_OUTLINE, icon_color=TEXT_MUTED, on_click=lambda e, p=prod: manage_cart(p, "decrease")), ft.Text(str(qty), weight=ft.FontWeight.BOLD, size=16, color=PRIMARY_DARK), ft.IconButton(ft.Icons.ADD_CIRCLE_OUTLINE, icon_color=PRIMARY_DARK, on_click=lambda e, p=prod: manage_cart(p, "add")), ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=DANGER, on_click=lambda e, p=prod: manage_cart(p, "remove"))], tight=True, spacing=0)
                             )
                         )
                     )
@@ -461,16 +389,8 @@ def main(page: ft.Page):
             if not app_state['cart']: return show_snack("سلتك فارغة!", DANGER)
             nav("/checkout")
             
-        return ft.View(route="/cart", bgcolor=BG_APP, controls=[
-            ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("سلة المشتريات", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), bgcolor=PRIMARY), 
-            cart_list, 
-            ft.Divider(color=PRIMARY_LIGHT), 
-            ft.Row([ft.Text("الإجمالي الكلي:", size=20, weight=ft.FontWeight.BOLD, color=TEXT_MAIN), total_text], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), 
-            ft.Container(height=10), 
-            ft.Container(content=ft.Text("إتمام الطلب", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=18), bgcolor=PRIMARY_DARK, padding=15, border_radius=30, alignment=ft.Alignment(0.0, 0.0), on_click=proceed_to_checkout, ink=True)
-        ], padding=20)
+        return ft.View(route="/cart", bgcolor=BG_APP, controls=[ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("سلة المشتريات", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), bgcolor=PRIMARY), cart_list, ft.Divider(color=PRIMARY_LIGHT), ft.Row([ft.Text("الإجمالي الكلي:", size=20, weight=ft.FontWeight.BOLD, color=TEXT_MAIN), total_text], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(height=10), ft.Container(content=ft.Text("إتمام الطلب", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=18), bgcolor=PRIMARY_DARK, padding=15, border_radius=30, alignment=ft.Alignment(0.0, 0.0), on_click=proceed_to_checkout, ink=True)], padding=20)
 
-    # --- 6. الدفع ---
     def build_checkout_view():
         total_price = sum(item['product']['price'] * item['qty'] for item in app_state['cart'])
         address_input = ft.TextField(label="عنوان التوصيل بالتفصيل", multiline=True, min_lines=2, border_radius=12, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
@@ -484,21 +404,8 @@ def main(page: ft.Page):
             nav("/home")
             show_snack(f"تم تأكيد الطلب بنجاح! رقم: #{order_id}", PRIMARY_DARK)
             
-        return ft.View(route="/checkout", bgcolor=BG_APP, controls=[
-            ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("وسيلة الدفع", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), bgcolor=PRIMARY), 
-            ft.Container(content=ft.Column([
-                ft.Text("إجمالي الطلبية", size=16, color=TEXT_MUTED, text_align=ft.TextAlign.CENTER), 
-                ft.Text(f"${total_price}", size=28, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK, text_align=ft.TextAlign.CENTER)
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER), padding=20, bgcolor=PRIMARY_LIGHT, border_radius=15, width=float('inf')), 
-            ft.Container(height=10),
-            ft.Text("اختيار وسيلة الدفع:", size=16, weight=ft.FontWeight.BOLD, color=TEXT_MAIN),
-            address_input, 
-            payment_method, 
-            ft.Container(expand=True), 
-            ft.Container(content=ft.Row([ft.Icon(ft.Icons.SHOPPING_BAG, color=ft.Colors.WHITE), ft.Text("تأكيد الشراء", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=18)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=PRIMARY_DARK, padding=15, border_radius=30, on_click=confirm_order, ink=True)
-        ], padding=20)
+        return ft.View(route="/checkout", bgcolor=BG_APP, controls=[ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("وسيلة الدفع", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), bgcolor=PRIMARY), ft.Container(content=ft.Column([ft.Text("إجمالي الطلبية", size=16, color=TEXT_MUTED, text_align=ft.TextAlign.CENTER), ft.Text(f"${total_price}", size=28, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK, text_align=ft.TextAlign.CENTER)], horizontal_alignment=ft.CrossAxisAlignment.CENTER), padding=20, bgcolor=PRIMARY_LIGHT, border_radius=15, width=float('inf')), ft.Container(height=10), ft.Text("اختيار وسيلة الدفع:", size=16, weight=ft.FontWeight.BOLD, color=TEXT_MAIN), address_input, payment_method, ft.Container(expand=True), ft.Container(content=ft.Row([ft.Icon(ft.Icons.SHOPPING_BAG, color=ft.Colors.WHITE), ft.Text("تأكيد الشراء", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=18)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=PRIMARY_DARK, padding=15, border_radius=30, on_click=confirm_order, ink=True)], padding=20)
 
-    # --- 7. الملف الشخصي ---
     def build_profile_view():
         orders_list = ft.ListView(expand=True, spacing=10)
         for o in db.conn.execute("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", (app_state['user']['id'],)).fetchall(): 
@@ -507,72 +414,126 @@ def main(page: ft.Page):
         def logout(e): app_state['user'] = None; app_state['cart'].clear(); nav("/home"); show_snack("تم تسجيل الخروج", PRIMARY_DARK)
         
         role_text = "المدير العام 🛡️" if app_state['user']['is_admin'] else "عميل 👤"
-        
-        profile_card = ft.Container(
-            content=ft.Column([
-                ft.Icon(ft.Icons.ACCOUNT_CIRCLE, size=80, color=PRIMARY_DARK), 
-                ft.Text(app_state['user']['name'], size=24, weight=ft.FontWeight.BOLD, color=TEXT_MAIN), 
-                ft.Text(role_text, color=PRIMARY if app_state['user']['is_admin'] else TEXT_MUTED, size=16),
-                ft.Container(height=10),
-                ft.Container(content=ft.Row([ft.Icon(ft.Icons.LOGOUT, color=ft.Colors.WHITE), ft.Text("تسجيل خروج", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=DANGER, padding=10, border_radius=20, on_click=logout, ink=True, width=150)
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=20, bgcolor=BG_CARD, border_radius=20, width=float('inf'), border=ft.border.all(1, PRIMARY_LIGHT)
-        )
-        
-        return ft.View(route="/profile", bgcolor=BG_APP, controls=[
-            ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("الملف الشخصي", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), bgcolor=PRIMARY), 
-            profile_card, 
-            ft.Divider(height=20, color=PRIMARY_LIGHT), 
-            ft.Text("سجل الطلبات:", size=18, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK), 
-            orders_list
-        ], padding=20)
+        profile_card = ft.Container(content=ft.Column([ft.Icon(ft.Icons.ACCOUNT_CIRCLE, size=80, color=PRIMARY_DARK), ft.Text(app_state['user']['name'], size=24, weight=ft.FontWeight.BOLD, color=TEXT_MAIN), ft.Text(role_text, color=PRIMARY if app_state['user']['is_admin'] else TEXT_MUTED, size=16), ft.Container(height=10), ft.Container(content=ft.Row([ft.Icon(ft.Icons.LOGOUT, color=ft.Colors.WHITE), ft.Text("تسجيل خروج", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=DANGER, padding=10, border_radius=20, on_click=logout, ink=True, width=150)], horizontal_alignment=ft.CrossAxisAlignment.CENTER), padding=20, bgcolor=BG_CARD, border_radius=20, width=float('inf'), border=ft.border.all(1, PRIMARY_LIGHT))
+        return ft.View(route="/profile", bgcolor=BG_APP, controls=[ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("الملف الشخصي", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), bgcolor=PRIMARY), profile_card, ft.Divider(height=20, color=PRIMARY_LIGHT), ft.Text("سجل الطلبات:", size=18, weight=ft.FontWeight.BOLD, color=PRIMARY_DARK), orders_list], padding=20)
 
-    # --- 8. لوحة التحكم الشاملة ---
+    # --- لوحة التحكم الشاملة ---
     def build_admin_view():
         stats = db.get_dashboard_stats()
         
         def build_stat_card(title, val, icon, color):
-            return ft.Container(
-                padding=20, bgcolor=BG_CARD, border_radius=15, border=ft.border.all(1, PRIMARY_LIGHT),
-                content=ft.Column([
-                    ft.Icon(icon, color=color, size=35),
-                    ft.Text(title, size=14, color=TEXT_MUTED),
-                    ft.Text(str(val), size=24, weight=ft.FontWeight.BOLD, color=TEXT_MAIN)
-                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
-            )
+            return ft.Container(padding=20, bgcolor=BG_CARD, border_radius=15, border=ft.border.all(1, PRIMARY_LIGHT), content=ft.Column([ft.Icon(icon, color=color, size=35), ft.Text(title, size=14, color=TEXT_MUTED), ft.Text(str(val), size=24, weight=ft.FontWeight.BOLD, color=TEXT_MAIN)], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
         
         stats_content = ft.Column([
-            ft.Row([
-                ft.Container(content=build_stat_card("الأرباح", f"${stats['revenue']}", ft.Icons.ATTACH_MONEY, PRIMARY_DARK), expand=True),
-                ft.Container(content=build_stat_card("الطلبات", stats['orders_count'], ft.Icons.SHOPPING_BAG, PRIMARY), expand=True)
-            ]),
-            ft.Row([
-                ft.Container(content=build_stat_card("المستخدمين", stats['users_count'], ft.Icons.PEOPLE, PRIMARY_MUTED), expand=True),
-                ft.Container(content=build_stat_card("المنتجات", stats['products_count'], ft.Icons.INVENTORY, TEXT_MUTED), expand=True)
-            ])
+            ft.Row([ft.Container(content=build_stat_card("الأرباح", f"${stats['revenue']}", ft.Icons.ATTACH_MONEY, PRIMARY_DARK), expand=True), ft.Container(content=build_stat_card("الطلبات", stats['orders_count'], ft.Icons.SHOPPING_BAG, PRIMARY), expand=True)]),
+            ft.Row([ft.Container(content=build_stat_card("المستخدمين", stats['users_count'], ft.Icons.PEOPLE, PRIMARY_MUTED), expand=True), ft.Container(content=build_stat_card("المنتجات", stats['products_count'], ft.Icons.INVENTORY, TEXT_MUTED), expand=True)])
         ], spacing=15, scroll=ft.ScrollMode.AUTO)
+        
+        edit_state = {"product_id": None}
         
         p_name = ft.TextField(label="الاسم", border_radius=10, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
         p_desc = ft.TextField(label="الوصف", multiline=True, border_radius=10, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
         p_price = ft.TextField(label="السعر ($)", border_radius=10, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
         p_qty = ft.TextField(label="الكمية", border_radius=10, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
         p_tags = ft.TextField(label="الكلمات المفتاحية", border_radius=10, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN)
+        p_image = ft.TextField(label="الصورة لم تُحدد بعد", read_only=True, border_radius=10, border_color=PRIMARY_LIGHT, bgcolor=BG_CARD, color=TEXT_MAIN, expand=True)
         
+        # 📌 التعديل السحري هنا: استخدام النسخ المحلي المباشر بدلاً من الرفع الشبكي
+        def on_file_picked(e: ft.FilePickerResultEvent):
+            if e.files and len(e.files) > 0:
+                f = e.files[0]
+                p_image.value = f.name
+                p_image.update()
+                
+                # التأكد من وجود مجلد assets
+                os.makedirs("assets", exist_ok=True)
+                
+                # النسخ المباشر للملف (لأننا نعمل محلياً كبرنامج سطح مكتب)
+                if f.path:
+                    try:
+                        shutil.copy(f.path, os.path.join("assets", f.name))
+                        show_snack("تم نسخ الصورة بنجاح! يمكنك حفظ المنتج.", PRIMARY_DARK)
+                    except Exception as ex:
+                        show_snack(f"عذراً، لم نتمكن من نسخ الملف: {str(ex)}", DANGER)
+                else:
+                    show_snack("لم نتمكن من الوصول لمسار الصورة.", DANGER)
+                
+        file_picker.on_result = on_file_picked
+        img_pick_btn = ft.ElevatedButton("اختر صورة للمنتج", icon=ft.Icons.UPLOAD_FILE, bgcolor=PRIMARY_MUTED, color=ft.Colors.WHITE, on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE))
+        image_row = ft.Row([p_image, img_pick_btn])
+        
+        save_btn_text = ft.Text("حفظ المنتج", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+        save_icon = ft.Icon(ft.Icons.SAVE, color=ft.Colors.WHITE)
+
         def save_product(e):
             if not p_name.value or not p_price.value or not p_qty.value: return show_snack("أكمل البيانات الأساسية", DANGER)
-            db.add_product(p_name.value, p_desc.value, float(p_price.value), int(p_qty.value), p_tags.value)
-            show_snack("تمت إضافة المنتج!", PRIMARY_DARK); nav("/admin")
+            final_image_name = p_image.value if p_image.value and p_image.value != "الصورة لم تُحدد بعد" else "default_med.png"
+            
+            if edit_state["product_id"]:
+                db.update_product(edit_state["product_id"], p_name.value, p_desc.value, float(p_price.value), int(p_qty.value), p_tags.value, final_image_name)
+                show_snack("تم تحديث المنتج بنجاح!", PRIMARY_DARK)
+            else:
+                db.add_product(p_name.value, p_desc.value, float(p_price.value), int(p_qty.value), p_tags.value, final_image_name)
+                show_snack("تمت إضافة المنتج!", PRIMARY_DARK)
+            
+            nav("/admin")
 
-        def del_product(pid): db.delete_product(pid); show_snack("تم حذف المنتج!", DANGER); nav("/admin")
+        def cancel_edit(e=None):
+            edit_state["product_id"] = None
+            p_name.value = ""; p_desc.value = ""; p_price.value = ""; p_qty.value = ""; p_tags.value = ""
+            p_image.value = "الصورة لم تُحدد بعد"
+            save_btn_text.value = "حفظ المنتج"
+            save_icon.name = ft.Icons.SAVE
+            cancel_btn.visible = False
+            page.update()
+
+        save_btn = ft.Container(content=ft.Row([save_icon, save_btn_text], alignment=ft.MainAxisAlignment.CENTER), bgcolor=PRIMARY_DARK, padding=12, border_radius=20, on_click=save_product, ink=True, expand=True)
+        cancel_btn = ft.Container(content=ft.Row([ft.Icon(ft.Icons.CANCEL, color=ft.Colors.WHITE), ft.Text("إلغاء التعديل", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=TEXT_MUTED, padding=12, border_radius=20, on_click=cancel_edit, ink=True, visible=False, expand=True)
+        action_buttons = ft.Row([save_btn, cancel_btn])
+
+        def edit_product(p):
+            edit_state["product_id"] = p['id']
+            p_name.value = p['name']
+            p_desc.value = p['description']
+            p_price.value = str(p['price'])
+            p_qty.value = str(p['quantity'])
+            
+            try:
+                tags_list = json.loads(p['symptoms_tags'])
+                p_tags.value = ",".join(tags_list)
+            except:
+                p_tags.value = p['symptoms_tags']
+                
+            p_image.value = p.get('image', 'default_med.png')
+            save_btn_text.value = "تحديث المنتج"
+            save_icon.name = ft.Icons.UPDATE
+            cancel_btn.visible = True
+            page.update()
+
+        def del_product(pid): 
+            db.delete_product(pid)
+            show_snack("تم حذف المنتج!", DANGER)
+            nav("/admin")
 
         products_list = ft.ListView(expand=True, spacing=10)
-        for p in db.get_all_products(): 
-            products_list.controls.append(ft.Container(bgcolor=BG_CARD, border_radius=8, border=ft.border.all(1, PRIMARY_LIGHT), content=ft.ListTile(title=ft.Text(p['name'], weight=ft.FontWeight.BOLD, color=TEXT_MAIN), subtitle=ft.Text(f"سعر: {p['price']}$ | متوفر: {p['quantity']}", color=TEXT_MUTED), trailing=ft.IconButton(ft.Icons.DELETE, icon_color=DANGER, on_click=lambda e, pid=p['id']: del_product(pid)))))
+        for p_row in db.get_all_products(): 
+            p = dict(p_row)
+            product_image_name = p.get('image', 'default_med.png')
+            products_list.controls.append(ft.Container(bgcolor=BG_CARD, border_radius=8, border=ft.border.all(1, PRIMARY_LIGHT), content=ft.ListTile(
+                leading=ft.Image(src=product_image_name, width=40, height=40, fit=ft.ImageFit.CONTAIN), 
+                title=ft.Text(p['name'], weight=ft.FontWeight.BOLD, color=TEXT_MAIN), 
+                subtitle=ft.Text(f"سعر: {p['price']}$ | متوفر: {p['quantity']}", color=TEXT_MUTED), 
+                trailing=ft.Row([
+                    ft.IconButton(ft.Icons.EDIT, icon_color=PRIMARY_DARK, on_click=lambda e, prod=p: edit_product(prod)),
+                    ft.IconButton(ft.Icons.DELETE, icon_color=DANGER, on_click=lambda e, pid=p['id']: del_product(pid))
+                ], width=96, spacing=0)
+            )))
 
         products_content = ft.Column([
-            ft.Text("إضافة منتج جديد:", weight=ft.FontWeight.BOLD, color=PRIMARY_DARK, size=16), 
+            ft.Text("إضافة / تعديل منتج:", weight=ft.FontWeight.BOLD, color=PRIMARY_DARK, size=16), 
             p_name, ft.Row([ft.Container(content=p_price, expand=True), ft.Container(content=p_qty, expand=True)]), p_desc, p_tags, 
-            ft.Container(content=ft.Row([ft.Icon(ft.Icons.SAVE, color=ft.Colors.WHITE), ft.Text("حفظ المنتج", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER), bgcolor=PRIMARY_DARK, padding=12, border_radius=20, on_click=save_product, ink=True), 
+            image_row,
+            action_buttons, 
             ft.Divider(height=20, color=PRIMARY_LIGHT), ft.Text("المنتجات الحالية:", weight=ft.FontWeight.BOLD, color=PRIMARY_DARK, size=16), products_list
         ], expand=True)
 
@@ -667,7 +628,7 @@ def main(page: ft.Page):
         return ft.View(route="/admin", bgcolor=BG_APP, controls=[ft.AppBar(leading=ft.IconButton(ft.Icons.ARROW_BACK, icon_color=ft.Colors.WHITE, on_click=go_back), title=ft.Text("الإدارة الشاملة", color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD), bgcolor=PRIMARY), custom_tabs_layout], padding=10)
 
     # ==========================================
-    # 6. نظام التوجيه والمسارات (Routing System)
+    # 6. نظام التوجيه
     # ==========================================
     def route_change(e):
         page.views.clear()
@@ -684,7 +645,6 @@ def main(page: ft.Page):
             
             async def transition():
                 await asyncio.sleep(2.5)
-                # استخدام page.go متوافقة
                 page.go("/home")
                 
             page.run_task(transition)
@@ -702,9 +662,8 @@ def main(page: ft.Page):
         page.update()
 
     page.on_route_change = route_change
-    
-    # الإقلاع الرئيسي للتطبيق باستخدام page.go بدلاً من الأوامر القديمة
     page.go("/splash")
 
+# أزلنا أمر upload_dir لأننا أصبحنا ننسخ يدوياً عبر shutil
 if __name__ == "__main__":
     ft.app(target=main)
